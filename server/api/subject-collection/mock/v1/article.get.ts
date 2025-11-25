@@ -1,9 +1,10 @@
 import { MOCK_MODE, getMockArticles } from '../index';
+import type { AccountInfo, AppMsgEx } from '~/types/types';
 
 export default defineEventHandler(async (event) => {
   if (!MOCK_MODE) {
     // 如果不是Mock模式，转发到真实API
-    return await $fetch('/api/public/v1/article', {
+    return await $fetch<{ base_resp: { ret: number; err_msg: string }; articles: AppMsgEx[] }>('/api/public/v1/article', {
       method: 'GET',
       query: getQuery(event)
     });

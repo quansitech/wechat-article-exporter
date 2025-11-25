@@ -3,7 +3,7 @@ import { MOCK_MODE } from '../index';
 export default defineEventHandler(async (event) => {
   if (!MOCK_MODE) {
     // 如果不是Mock模式，转发到真实API
-    return await $fetch('/api/public/v1/download', {
+    return await $fetch<string | { base_resp: { ret: number; err_msg: string } }>('/api/public/v1/download', {
       method: 'GET',
       query: getQuery(event)
     });

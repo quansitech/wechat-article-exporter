@@ -3,7 +3,7 @@ import { MOCK_MODE, getMockAuthorInfo } from '../index';
 export default defineEventHandler(async (event) => {
   if (!MOCK_MODE) {
     // 如果不是Mock模式，转发到真实API
-    return await $fetch('/api/public/beta/authorinfo', {
+    return await $fetch<{ base_resp: { ret: number; err_msg: string } }>('/api/public/beta/authorinfo', {
       method: 'GET',
       query: getQuery(event)
     });
