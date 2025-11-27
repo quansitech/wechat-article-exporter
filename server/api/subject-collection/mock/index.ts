@@ -20,15 +20,10 @@ export function getMockArticles(fakeid?: string) {
   return mockData.articles;
 }
 
-export function getMockAuthorInfo(biz: string) {
+export function getMockAuthorInfo(biz: string, keyword: string) {
   const account = mockData.accounts.find(acc => acc.fakeid === biz);
   if (account) {
-    return {
-      base_resp: { ret: 0, err_msg: 'ok' },
-      nickname: account.nickname,
-      fakeid: account.fakeid,
-      signature: account.signature
-    };
+    return mockData.authorinfo;
   }
   return {
     base_resp: { ret: -1, err_msg: '公众号不存在' }

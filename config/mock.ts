@@ -9,6 +9,7 @@ export interface MockConfig {
   data: {
     accounts: any[];
     articles: any[];
+    authorinfo: object;
   };
 }
 
@@ -78,7 +79,16 @@ export const mockConfig: MockConfig = {
         item_show_type: 2,
         appmsg_album_infos: []
       }
-    ]
+    ],
+    authorinfo:{
+      base_resp: {
+        exportkey_token: '',
+        ret: 0,
+      },
+      identity_name: '专心保险经纪有限公司',
+      is_verify: 2,
+      original_article_count: 3585,
+    }
   }
 };
 
