@@ -1,5 +1,17 @@
 import { createCrawlTask } from '~/server/services/subject-collection.service';
 import { MOCK_MODE } from '../mock/index';
+import { registerTokenHook, registerCookieHook, getTokenFromStore } from '~/server/utils/CookieStore';
+import { getAuthFromFile } from '~/server/utils/auth-file';
+
+// 注册文件认证钩子
+registerTokenHook(async (event) => {
+  return getAuthFromFile().token;
+});
+
+registerCookieHook(async (event) => {
+  return getAuthFromFile().cookies;
+});
+
 interface TaskRequestBody {
   keyword: string;
 }

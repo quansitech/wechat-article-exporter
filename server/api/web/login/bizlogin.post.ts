@@ -1,5 +1,6 @@
 import { proxyMpRequest } from '~/server/utils/proxy-request';
-import { getCookiesFromRequest, getCookieFromResponse } from '~/server/utils/CookieStore';
+import { getCookiesFromRequest, getCookieFromResponse, exportAuthInfo } from '~/server/utils/CookieStore';
+import { autoSaveAuthInfo } from '~/server/utils/auth-file';
 import dayjs from 'dayjs';
 
 export default defineEventHandler(async event => {
@@ -47,6 +48,22 @@ export default defineEventHandler(async event => {
     return {
       err: '获取公众号昵称失败，请稍后重试',
     };
+  }
+
+  // 导出认证信息并保存到文件
+  try {
+    // 设置 auth-key 到请求头，以便 exportAuthInfo 可以获取认证信息
+    event.node.req.headers['x-auth-key'] = authKey;
+    
+    const authInfo = await exportAuthInfo(event);
+    if (authInfo.token && authInfo.cookies) {
+      const saved = autoSaveAuthInfo(authInfo.token, authInfo.cookies);
+      if (saved) {
+        console.log('认证信息已保存到文件:', authInfo.token ? 'token已保存' : '', authInfo.cookies ? 'cookies已保存' : '');
+      }
+    }
+  } catch (error) {
+    console.warn('保存认证信息到文件失败:', error);
   }
 
   const body = JSON.stringify({

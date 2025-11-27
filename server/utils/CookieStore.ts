@@ -1,5 +1,32 @@
 import { H3Event, parseCookies } from 'h3';
 import { CookieKVValue, getMpCookie, setMpCookie } from '~/server/kv/cookie';
+import { getAuthFromFile, autoSaveAuthInfo } from './auth-file';
+
+// 钩子数组
+const tokenHooks: Array<(event: H3Event) => Promise<string | null>> = [];
+const cookieHooks: Array<(event: H3Event) => Promise<string | null>> = [];
+
+/**
+ * 注册 token 钩子
+ */
+export function registerTokenHook(hook: (event: H3Event) => Promise<string | null>): void {
+  tokenHooks.push(hook);
+}
+
+/**
+ * 注册 cookie 钩子
+ */
+export function registerCookieHook(hook: (event: H3Event) => Promise<string | null>): void {
+  cookieHooks.push(hook);
+}
+
+/**
+ * 清空所有钩子（主要用于测试）
+ */
+export function clearAuthHooks(): void {
+  tokenHooks.length = 0;
+  cookieHooks.length = 0;
+}
 
 // 表示一条 set-cookie 记录的解析结果
 export type CookieEntity = Record<string, string | number>;
@@ -185,13 +212,21 @@ export const cookieStore = new CookieStore();
 /**
  * 从 CookieStore 中获取 cookie 字符串
  *
- * @description 根据请求中的 X-Auth-Key header 或者 auth-key cookie，从 CookieStore 中检索用户登录信息的 cookie，这些 cookie 会透传给微信
+ * @description 根据钩子、请求中的 X-Auth-Key header 或者 auth-key cookie，从 CookieStore 中检索用户登录信息的 cookie，这些 cookie 会透传给微信
  * @param event
  */
 export async function getCookieFromStore(event: H3Event): Promise<string | null> {
   let cookie: string | null = null;
 
-  // 优先根据自定义的 X-Auth-Key 检索
+  // 1. 优先调用 cookie 钩子
+  for (const hook of cookieHooks) {
+    cookie = await hook(event);
+    if (cookie) {
+      return cookie;
+    }
+  }
+
+  // 2. 根据自定义的 X-Auth-Key 检索
   let authKey = getRequestHeader(event, 'X-Auth-Key');
   if (authKey) {
     cookie = await cookieStore.getCookie(authKey);
@@ -200,7 +235,7 @@ export async function getCookieFromStore(event: H3Event): Promise<string | null>
     }
   }
 
-  // 从 cookie 中的 token 检索
+  // 3. 从 cookie 中的 token 检索
   const cookies = parseCookies(event);
   authKey = cookies['auth-key'];
   if (authKey) {
@@ -216,13 +251,21 @@ export async function getCookieFromStore(event: H3Event): Promise<string | null>
 /**
  * 从 CookieStore 中获取公众号的 token
  *
- * @description 根据请求中的 X-Auth-Key header 或者 auth-key cookie，从 CookieStore 中检索用户登录时绑定的 token
+ * @description 根据钩子、请求中的 X-Auth-Key header 或者 auth-key cookie，从 CookieStore 中检索用户登录时绑定的 token
  * @param event
  */
 export async function getTokenFromStore(event: H3Event): Promise<string | null> {
   let token: string | null = null;
 
-  // 优先根据自定义的 X-Auth-Key 检索
+  // 1. 优先调用 token 钩子
+  for (const hook of tokenHooks) {
+    token = await hook(event);
+    if (token) {
+      return token;
+    }
+  }
+
+  // 2. 根据自定义的 X-Auth-Key 检索
   let authKey = getRequestHeader(event, 'X-Auth-Key');
   if (authKey) {
     token = await cookieStore.getToken(authKey);
@@ -231,7 +274,7 @@ export async function getTokenFromStore(event: H3Event): Promise<string | null> 
     }
   }
 
-  // 从 cookie 中的 token 检索
+  // 3. 从 cookie 中的 token 检索
   const cookies = parseCookies(event);
   authKey = cookies['auth-key'];
   if (authKey) {
@@ -269,4 +312,85 @@ export function getCookieFromResponse(name: string, response: Response): string 
     return targetCookie.value as string;
   }
   return null;
+}
+
+/**
+ * 导出当前认证信息用于环境变量配置
+ * 
+ * @description 从当前请求中提取完整的认证信息，包括token和cookies
+ * @param event
+ */
+export async function exportAuthInfo(event: H3Event): Promise<{
+  token: string | null;
+  cookies: string | null;
+  authKey: string | null;
+  envConfig: {
+    WECHAT_TOKEN?: string;
+    WECHAT_COOKIES?: string;
+  };
+}> {
+  const token = await getTokenFromStore(event);
+  
+  if (!token) {
+    return {
+      token: null,
+      cookies: null,
+      authKey: null,
+      envConfig: {}
+    };
+  }
+
+  let cookies: string | null = null;
+  let authKey: string | null = null;
+
+  // 尝试从 X-Auth-Key 获取认证信息
+  const xAuthKey = getRequestHeader(event, 'X-Auth-Key');
+  if (xAuthKey) {
+    authKey = xAuthKey;
+    cookies = await cookieStore.getCookie(authKey);
+  }
+
+  // 尝试从 cookie 获取认证信息
+  if (!cookies) {
+    const requestCookies = parseCookies(event);
+    const cookieAuthKey = requestCookies['auth-key'];
+    if (cookieAuthKey) {
+      authKey = cookieAuthKey;
+      cookies = await cookieStore.getCookie(authKey);
+    }
+  }
+
+  const envConfig: { WECHAT_TOKEN?: string; WECHAT_COOKIES?: string } = {};
+  if (token) envConfig.WECHAT_TOKEN = token;
+  if (cookies) envConfig.WECHAT_COOKIES = cookies;
+
+  return {
+    token,
+    cookies,
+    authKey,
+    envConfig
+  };
+}
+
+/**
+ * 检查认证状态
+ * 
+ * @description 验证当前认证信息的有效性
+ * @param event
+ */
+export async function checkAuthStatus(event: H3Event): Promise<{
+  isAuthenticated: boolean;
+  hasToken: boolean;
+  hasCookies: boolean;
+  authKey: string | null;
+}> {
+  const token = await getTokenFromStore(event);
+  const cookies = await getCookieFromStore(event);
+
+  return {
+    isAuthenticated: !!(token && cookies),
+    hasToken: !!token,
+    hasCookies: !!cookies,
+    authKey: getRequestHeader(event, 'X-Auth-Key') || parseCookies(event)['auth-key']
+  };
 }
