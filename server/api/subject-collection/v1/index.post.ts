@@ -5,16 +5,28 @@ interface TaskRequestBody {
 }
 
 export default defineEventHandler(async (event) => {
+  const token = await getTokenFromStore(event);
+  
+  if (!token) {
+    return {
+      base_resp: {
+        ret: -1,
+        err_msg: '认证信息无效',
+      },
+    };
+  }
+
   const body = await readBody<TaskRequestBody>(event);
   
   if (!body.keyword) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'keyword参数不能为空'
-    });
+    return {
+      base_resp: {
+        ret: -1,
+        err_msg: 'keyword不能为空',
+      },
+    };
   }
 
-  // 创建爬取任务
   const task = createCrawlTask(body.keyword);
   
   return {

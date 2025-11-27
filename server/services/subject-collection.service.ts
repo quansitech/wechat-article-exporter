@@ -144,7 +144,14 @@ async function executeCrawlTask(taskId: string): Promise<void> {
  */
 async function searchAccounts(keyword: string): Promise<AccountInfo[]> {
   const response = await $fetch<{ base_resp: { ret: number; err_msg: string }; list: AccountInfo[] }>(
-    `${getApiUrl('/v1/account')}?keyword=${encodeURIComponent(keyword)}`
+    `${getApiUrl('/v1/account')}`,
+    {
+      method: 'GET',
+      query: {
+        keyword: encodeURIComponent(keyword),
+      },
+      retry: 0,
+    }
   );
   
   if (response.base_resp.ret !== 0) {
@@ -159,21 +166,26 @@ async function searchAccounts(keyword: string): Promise<AccountInfo[]> {
  */
 async function verifyAccount(account: AccountInfo, keyword: string): Promise<boolean> {
   try {
-    const response = await $fetch<{ base_resp: { ret: number; err_msg: string } }>(
-      `${getApiUrl('/beta/authorinfo')}?biz=${account.fakeid}`
+    const response = await $fetch<{ base_resp: { ret: number; err_msg: string }, identity_name:string  }>(
+      `${getApiUrl('/beta/authorinfo')}`,
+      {
+        method: 'GET',
+        query: {
+          biz: account.fakeid,
+        },
+        retry: 0,
+      }
     );
     
     if (response.base_resp.ret === 0) {
-      // 简单的校验逻辑：检查公众号名称是否包含关键字
-      const accountName = account.nickname.toLowerCase();
-      const searchKeyword = keyword.toLowerCase();
-      return accountName.includes(searchKeyword);
+      // 校验逻辑：查询主题与关键字是否匹配
+      return response.identity_name === keyword;
     }
     
     return false;
   } catch (error) {
     console.warn('校验公众号主体失败，跳过校验:', error);
-    return true; // 如果校验失败，默认通过
+    return false; 
   }
 }
 
@@ -187,7 +199,16 @@ async function fetchArticles(account: AccountInfo): Promise<AppMsgEx[]> {
   
   while (hasMore) {
     const response = await $fetch<{ base_resp: { ret: number; err_msg: string }; articles: AppMsgEx[] }>(
-      `${getApiUrl('/v1/article')}?fakeid=${account.fakeid}&begin=${begin}&size=10`
+      `${getApiUrl('/v1/article')}`,
+      {
+        method: 'GET',
+        query: {
+          fakeid: account.fakeid,
+          begin: begin,
+          size: 10,
+        },
+        retry: 0,
+      }
     );
     
     if (response.base_resp.ret !== 0) {
@@ -215,14 +236,22 @@ async function fetchArticles(account: AccountInfo): Promise<AppMsgEx[]> {
  */
 async function downloadArticle(url: string): Promise<string> {
   const response = await $fetch<string | { base_resp: { ret: number; err_msg: string } }>(
-    `${getApiUrl('/v1/download')}?url=${encodeURIComponent(url)}&format=markdown`
+    `${getApiUrl('/v1/download')}`,
+      {
+        method: 'GET',
+        query: {
+          url: encodeURIComponent(url),
+          format: 'markdown',
+        },
+        retry: 0,
+      }
   );
   
-  if (typeof response !== 'string' && response.base_resp.ret !== 0) {
+  if (typeof response !== 'string') {
     throw new Error(`下载文章失败: ${response.base_resp.err_msg}`);
   }
   
-  return typeof response === 'string' ? response : '';
+  return response;
 }
 
 /**
