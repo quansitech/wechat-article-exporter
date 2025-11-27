@@ -31,3 +31,5 @@ docs
 
 .idea/
 .vscode/
+
+.wechat-auth.json
