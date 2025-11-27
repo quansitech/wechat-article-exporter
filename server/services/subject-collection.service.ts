@@ -148,7 +148,7 @@ async function searchAccounts(keyword: string): Promise<AccountInfo[]> {
     {
       method: 'GET',
       query: {
-        keyword: encodeURIComponent(keyword),
+        keyword: keyword,
       },
       retry: 0,
     }

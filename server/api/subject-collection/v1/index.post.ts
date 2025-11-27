@@ -1,5 +1,5 @@
 import { createCrawlTask } from '~/server/services/subject-collection.service';
-
+import { MOCK_MODE } from '../mock/index';
 interface TaskRequestBody {
   keyword: string;
 }
@@ -7,7 +7,7 @@ interface TaskRequestBody {
 export default defineEventHandler(async (event) => {
   const token = await getTokenFromStore(event);
   
-  if (!token) {
+  if (!MOCK_MODE && !token) {
     return {
       base_resp: {
         ret: -1,

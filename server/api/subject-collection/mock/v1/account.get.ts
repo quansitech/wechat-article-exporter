@@ -9,25 +9,16 @@ export default defineEventHandler(async (event) => {
       query: getQuery(event)
     });
   }
-
-  const query = getQuery(event);
-  const keyword = query.keyword as string;
   
   // 模拟搜索逻辑
   const accounts = getMockAccounts();
-  const filteredAccounts = keyword 
-    ? accounts.filter(account => 
-        account.nickname.toLowerCase().includes(keyword.toLowerCase()) ||
-        account.signature.toLowerCase().includes(keyword.toLowerCase())
-      )
-    : accounts;
 
   return {
     base_resp: {
       ret: 0,
       err_msg: 'ok'
     },
-    list: filteredAccounts,
-    total: filteredAccounts.length
+    list: accounts,
+    total: accounts.length
   };
 });
