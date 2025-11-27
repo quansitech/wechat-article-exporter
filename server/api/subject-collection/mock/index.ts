@@ -20,7 +20,7 @@ export function getMockArticles(fakeid?: string) {
   return mockData.articles;
 }
 
-export function getMockAuthorInfo(biz: string, keyword: string) {
+export function getMockAuthorInfo(biz: string) {
   const account = mockData.accounts.find(acc => acc.fakeid === biz);
   if (account) {
     return mockData.authorinfo;
