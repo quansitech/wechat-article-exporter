@@ -223,8 +223,9 @@ async function fetchArticles(account: AccountInfo): Promise<AppMsgEx[]> {
       hasMore = false;
     }
     
+    // todo 
     // 限制最多获取100篇文章
-    if (allArticles.length >= 100) {
+    if (allArticles.length >= 10) {
       break;
     }
   }
