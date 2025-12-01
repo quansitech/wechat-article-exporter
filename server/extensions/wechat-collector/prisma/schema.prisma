@@ -1,0 +1,55 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 1. 系统配置表 (存储 Cookie/Token)
+model SystemConfig {
+  key   String @id
+  value String
+}
+
+// 2. 公众号表
+model Account {
+  id             String    @id // fakeid / biz
+  name           String
+  entityName     String?   // 搜索主体
+  
+  isVerified     Boolean   @default(false)
+  lastCrawlTime  DateTime? // 增量抓取锚点
+  
+  extra          String?   // 存储 JSON 字符串 (intro, etc.)
+  
+  articles       Article[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+// 3. 文章表
+model Article {
+  id          String   @id // URL Hash
+  url         String   @unique
+  title       String
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id])
+  
+  publishTime BigInt?
+  
+  // 状态机: 0-Pending, 1-Processing, 2-Done, 3-Failed
+  status      Int      @default(0) 
+  
+  localPath   String?  // Markdown 文件本地存储路径
+  content     String?  // Markdown 文本内容
+  extra       String?  // 元数据 JSON
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
