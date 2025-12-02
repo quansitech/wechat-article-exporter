@@ -1,4 +1,5 @@
 {
     "token": "your_wechat_token_here",
-    "cookies": "uuid=xxx; rewardsn=xxx; wxtokenkey=xxx; ..."
+    "cookies": "uuid=xxx; rewardsn=xxx; wxtokenkey=xxx; ...",
+    "updatedAt": "2025-11-27T10:18:34.198Z"
 }

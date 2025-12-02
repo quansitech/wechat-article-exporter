@@ -42,14 +42,13 @@ export class AccountDiscoveryService implements IAccountDiscoveryService {
 
       // 2. 库中无，调用 API 搜索
       console.log(`[AccountDiscovery] 缓存未命中，调用API搜索...`);
-      const response = await wechatApiClient.searchBiz(subjectName, 0);
+      const { accounts, isCompleted } = await wechatApiClient.searchBiz(subjectName, 0);
 
-      if (!response.list || response.list.length === 0) {
+      if (!accounts || accounts.length === 0) {
         console.log(`[AccountDiscovery] 未找到与"${subjectName}"相关的公众号`);
         return [];
       }
 
-      const accounts = response.list;
       console.log(`[AccountDiscovery] API 找到 ${accounts.length} 个公众号`);
 
       // 3. 验证并入库
@@ -106,7 +105,7 @@ export class AccountDiscoveryService implements IAccountDiscoveryService {
   /**
    * 验证公众号主体
    */
-  async verify(accountInfo: any, subjectName: string): Promise<boolean> {
+  async verify(accountInfo: { fakeid: string; nickname: string }, subjectName: string): Promise<boolean> {
     try {
       // 调用统一客户端进行验证
       const response = await wechatApiClient.getAuthorInfo(accountInfo.fakeid);

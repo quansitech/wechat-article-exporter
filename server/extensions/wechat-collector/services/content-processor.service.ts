@@ -127,7 +127,7 @@ export class ContentProcessorService implements IContentProcessorService {
       await prisma.article.update({
         where: { id: article.urlHash },
         data: { status: 3 } // Failed
-      }).catch(e => console.error('DB Update Failed', e));
+      }).catch((e: Error) => console.error('DB Update Failed', e));
     }
   }
 
