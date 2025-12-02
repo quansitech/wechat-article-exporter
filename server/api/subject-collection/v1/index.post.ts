@@ -1,4 +1,4 @@
-import { createCrawlTask } from '~/server/services/subject-collection.service';
+import { createCrawlTask } from '~/server/extensions/subject-collection/services/subject-collection.service';
 import { MOCK_MODE } from '../mock/index';
 import { registerTokenHook, registerCookieHook, getTokenFromStore } from '~/server/utils/CookieStore';
 import { getAuthFromFile } from '~/server/utils/auth-file';
@@ -18,7 +18,7 @@ interface TaskRequestBody {
 
 export default defineEventHandler(async (event) => {
   const token = await getTokenFromStore(event);
-  
+
   if (!MOCK_MODE && !token) {
     return {
       base_resp: {
@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readBody<TaskRequestBody>(event);
-  
+
   if (!body.keyword) {
     return {
       base_resp: {
@@ -40,7 +40,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const task = createCrawlTask(body.keyword);
-  
+
   return {
     task_id: task.id,
     status: task.status,

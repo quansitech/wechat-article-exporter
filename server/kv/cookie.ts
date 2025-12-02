@@ -1,4 +1,4 @@
-import { type CookieEntity } from '~/server/utils/CookieStore';
+export type CookieEntity = Record<string, string | number>;
 
 export type CookieKVKey = string;
 

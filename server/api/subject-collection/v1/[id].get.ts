@@ -1,17 +1,17 @@
-import { getCrawlTask } from '~/server/services/subject-collection.service';
+import { getCrawlTask } from '~/server/extensions/subject-collection/services/subject-collection.service';
 
 export default defineEventHandler(async (event) => {
   const { id } = event.context.params as { id: string };
-  
+
   const task = getCrawlTask(id);
-  
+
   if (!task) {
     throw createError({
       statusCode: 404,
       statusMessage: '任务不存在'
     });
   }
-  
+
   return {
     task_id: task.id,
     keyword: task.keyword,

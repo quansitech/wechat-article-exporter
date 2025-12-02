@@ -1,5 +1,5 @@
 import { H3Event, parseCookies } from 'h3';
-import { CookieKVValue, getMpCookie, setMpCookie } from '~/server/kv/cookie';
+import { CookieKVValue, getMpCookie, setMpCookie, type CookieEntity } from '~/server/kv/cookie';
 import { getAuthFromFile, autoSaveAuthInfo } from './auth-file';
 
 // 钩子数组
@@ -28,8 +28,7 @@ export function clearAuthHooks(): void {
   cookieHooks.length = 0;
 }
 
-// 表示一条 set-cookie 记录的解析结果
-export type CookieEntity = Record<string, string | number>;
+
 
 // 公众号所有的 set-cookie 解析结果
 export class AccountCookie {
@@ -330,7 +329,7 @@ export async function exportAuthInfo(event: H3Event): Promise<{
   };
 }> {
   const token = await getTokenFromStore(event);
-  
+
   if (!token) {
     return {
       token: null,
