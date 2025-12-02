@@ -150,10 +150,25 @@ export class WeChatApiClient {
      */
     private async fetchAppMsgPublish(fakeid: string, begin: number): Promise<AppMsgPublishResponse> {
         if (this.mockMode) {
-            console.log(`[WeChatApiClient] Mock Articles: ${fakeid}`);
+            console.log(`[WeChatApiClient] Mock Articles: ${fakeid}, begin: ${begin}`);
             await this.delay(300);
-            const articles = mockUtils.getArticles();
-            const publishList = articles.map(article => ({
+            const allArticles = mockUtils.getArticles();
+            const pageSize = 10;
+            let currentPageArticles: AppMsgEx[] = [];
+            
+            // 简单分页逻辑：假设 mockUtils.getArticles() 返回了足够的数据（例如15篇）
+            // begin=0: 第一页（前pageSize篇）
+            // begin=10: 第二页（第pageSize+1到2*pageSize篇）
+            // begin>=20: 读取完成（空数组）
+            const startIndex = begin;
+            const endIndex = begin + pageSize;
+            
+            if (startIndex < allArticles.length) {
+                currentPageArticles = allArticles.slice(startIndex, Math.min(endIndex, allArticles.length));
+            }
+            // 如果 startIndex >= allArticles.length，currentPageArticles 保持为空数组
+            
+            const publishList = currentPageArticles.map(article => ({
                 publish_info: JSON.stringify({ appmsgex: [article] })
             }));
 
@@ -161,7 +176,7 @@ export class WeChatApiClient {
                 base_resp: { ret: 0, err_msg: 'ok' },
                 publish_page: JSON.stringify({
                     publish_list: publishList,
-                    total_count: articles.length
+                    total_count: allArticles.length // 总文章数
                 })
             } as any;
         }

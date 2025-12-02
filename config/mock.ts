@@ -15,7 +15,8 @@ export interface MockConfig {
 
 // Mock配置
 export const mockConfig: MockConfig = {
-  enabled: process.env.MOCK_MODE === 'true',
+  // enabled: process.env.MOCK_MODE === 'true',
+  enabled: true,
   apiPrefix: '/api/subject-collection/mock',
   data: {
     accounts: [
@@ -28,7 +29,7 @@ export const mockConfig: MockConfig = {
         alias: "test_account_1"
       },
       {
-        fakeid: "mock_biz_002", 
+        fakeid: "mock_biz_002",
         nickname: "测试公众号2",
         round_head_img: "https://example.com/avatar2.jpg",
         service_type: 1,
@@ -53,7 +54,7 @@ export const mockConfig: MockConfig = {
       },
       {
         aid: "mock_article_002",
-        title: "测试文章标题2", 
+        title: "测试文章标题2",
         link: "https://mp.weixin.qq.com/s/mock2",
         create_time: 1700086400,
         update_time: 1700086400,
@@ -68,7 +69,7 @@ export const mockConfig: MockConfig = {
       {
         aid: "mock_article_003",
         title: "测试文章标题3",
-        link: "https://mp.weixin.qq.com/s/mock3", 
+        link: "https://mp.weixin.qq.com/s/mock3",
         create_time: 1700172800,
         update_time: 1700172800,
         author_name: "测试作者",
@@ -80,7 +81,7 @@ export const mockConfig: MockConfig = {
         appmsg_album_infos: []
       }
     ],
-    authorinfo:{
+    authorinfo: {
       base_resp: {
         exportkey_token: '',
         ret: 0,
@@ -113,12 +114,26 @@ export const mockUtils = {
   getAccounts() {
     return mockConfig.data.accounts;
   },
-  
+
   // 获取Mock文章数据
   getArticles() {
-    return mockConfig.data.articles;
+    const len = 30;
+    const articles = [...mockConfig.data.articles];
+    for (let i = 2; i < len; i++) {
+      const key = i + 1;
+      articles.push({
+        ...mockConfig.data.articles[0],
+        aid: `mock_article_${String(key).padStart(3, '0')}`,
+        title: `测试文章标题${key}`,
+        link: `https://mp.weixin.qq.com/s/mock${key}`,
+        create_time: 1700000000 + i * 86400,
+        update_time: 1700000000 + i * 86400,
+        digest: `这是第${key}篇文章的摘要内容，用于测试目的。`
+      });
+    }
+    return articles;
   },
-  
+
   // 获取Mock作者信息
   getAuthorInfo(biz: string) {
     const account = mockConfig.data.accounts.find(acc => acc.fakeid === biz);
@@ -134,11 +149,11 @@ export const mockUtils = {
       base_resp: { ret: -1, err_msg: '公众号不存在' }
     };
   },
-  
+
   // 生成Mock Markdown内容
   generateMarkdown(url: string): string {
     const articleId = url.split('/').pop() || 'unknown';
-    
+
     return `# 测试文章标题
 
 > 本文来自Mock数据，用于调试目的
@@ -189,7 +204,7 @@ function helloWorld() {
   // 生成Mock HTML内容
   generateHtml(url: string): string {
     const articleId = url.split('/').pop() || 'unknown';
-    
+
     return `<h1>测试文章标题</h1>
 <p><em>本文来自Mock数据，用于调试目的</em></p>
 <p>文章ID: ${articleId}</p>
@@ -234,7 +249,7 @@ function helloWorld() {
   // 生成Mock文本内容
   generateText(url: string): string {
     const articleId = url.split('/').pop() || 'unknown';
-    
+
     return `测试文章标题
 
 本文来自Mock数据，用于调试目的
