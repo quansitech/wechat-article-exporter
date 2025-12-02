@@ -1,14 +1,16 @@
-import type { 
-  CollectionArticle, 
-  CollectionOptions, 
+import type {
+  CollectionArticle,
+  CollectionOptions,
   IContentProcessorService,
-  ArticleProcessResult 
+  ArticleProcessResult
 } from '~/types/collection.types';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import PQueue from 'p-queue';
 import { prisma } from './database.service';
-
+import { wechatApiClient } from '../utils/wechat-api-client';
+import TurndownService from 'turndown';
+import { normalizeHtml } from '~/server/utils';
 /**
  * 内容处理服务
  * 负责消费文章处理任务，由 p-queue 调度
@@ -17,7 +19,7 @@ export class ContentProcessorService implements IContentProcessorService {
   private baseStoragePath = './storage/collected-articles';
   // 核心：异步队列，控制并发
   private queue = new PQueue({ concurrency: 5 });
-  
+
   constructor() {
     this.queue.on('idle', () => {
       console.log(`[ContentProcessor] 队列已空闲`);
@@ -36,7 +38,7 @@ export class ContentProcessorService implements IContentProcessorService {
    */
   async addTask(article: CollectionArticle): Promise<void> {
     console.log(`[ContentProcessor] 添加任务: ${article.title}`);
-    
+
     this.queue.add(async () => {
       await this.processSingleArticle(article);
     });
@@ -50,7 +52,7 @@ export class ContentProcessorService implements IContentProcessorService {
       where: { status: 0 } // Pending
     });
     console.log(`[ContentProcessor] 恢复 ${pendings.length} 个挂起任务`);
-    
+
     for (const p of pendings) {
       // 转换为 CollectionArticle 结构
       const task: CollectionArticle = {
@@ -73,54 +75,54 @@ export class ContentProcessorService implements IContentProcessorService {
     if (options?.concurrency) {
       this.queue.concurrency = options.concurrency;
     }
-    
+
     for (const article of articles) {
       this.addTask(article);
     }
-    
+
     // 注意：如果是流式调用，Promise 不会等待队列清空。
     // 如果需要等待，可以 await this.queue.onIdle();
-    return []; 
+    return [];
   }
-  
+
   /**
    * 处理单篇文章 (Queue Worker)
    */
   private async processSingleArticle(article: CollectionArticle): Promise<void> {
     console.log(`[ContentProcessor] 正在处理: ${article.title}`);
-    
+
     try {
       // 1. Update Status -> Processing
       await prisma.article.update({
         where: { id: article.urlHash },
         data: { status: 1 } // Processing
       });
-      
+
       // 2. Download & Convert
       const markdownContent = await this.downloadAndConvert(article.url);
-      
+
       // 3. Save to File
       const filePath = await this.saveToFile(markdownContent, {
         title: article.title,
-        author: '微信公众号', 
+        author: '微信公众号',
         date: new Date(article.createdAt)
       });
-      
+
       // 4. Update Status -> Done
       await prisma.article.update({
         where: { id: article.urlHash },
-        data: { 
+        data: {
           status: 2, // Done
           localPath: filePath,
           content: null // 根据需求，这里不存全文到DB
         }
       });
-      
+
       console.log(`[ContentProcessor] 处理成功: ${article.title}`);
-      
+
     } catch (error) {
       console.error(`[ContentProcessor] 处理失败: ${article.title}`, error);
-      
+
       // 5. Update Status -> Failed
       await prisma.article.update({
         where: { id: article.urlHash },
@@ -128,24 +130,43 @@ export class ContentProcessorService implements IContentProcessorService {
       }).catch(e => console.error('DB Update Failed', e));
     }
   }
-  
+
+
+
   async downloadAndConvert(url: string): Promise<string> {
-    // 模拟下载 (实际应接入 Puppeteer 或 HTTP client)
-    await this.delay(1000);
-    return this.generateMockMarkdown(url);
+    console.log(`[ContentProcessor] 下载文章: ${url}`);
+
+    try {
+      // 使用统一客户端下载页面内容 (Mock/Real 自动切换)
+      const rawHtml = await wechatApiClient.downloadPage(url);
+
+      const turndownService = new TurndownService();
+      // 配置 turndown 规则 (可选)
+      turndownService.addRule('ignoreScripts', {
+        filter: ['script', 'style'],
+        replacement: () => ''
+      });
+
+      const markdown = turndownService.turndown(normalizeHtml(rawHtml, 'html'));
+      return markdown;
+
+    } catch (error) {
+      console.error(`[ContentProcessor] 下载转换失败:`, error);
+      throw error;
+    }
   }
-  
+
   async saveToFile(content: string, metadata: { title: string; author: string; date: Date }): Promise<string> {
     await this.ensureStorageDirectory();
     const sanitizedTitle = this.sanitizeFileName(metadata.title);
-    const fileName = `${sanitizedTitle}_${Math.floor(Date.now()/1000)}.md`;
+    const fileName = `${sanitizedTitle}_${Math.floor(Date.now() / 1000)}.md`;
     const filePath = join(this.baseStoragePath, fileName);
-    
+
     const fullContent = this.buildMarkdownFile(content, metadata);
     await fs.writeFile(filePath, fullContent, 'utf-8');
     return filePath;
   }
-  
+
   private async ensureStorageDirectory(): Promise<void> {
     try {
       await fs.access(this.baseStoragePath);
@@ -153,7 +174,7 @@ export class ContentProcessorService implements IContentProcessorService {
       await fs.mkdir(this.baseStoragePath, { recursive: true });
     }
   }
-  
+
   private buildMarkdownFile(content: string, metadata: { title: string; author: string; date: Date }): string {
     return `---
 title: "${metadata.title}"
@@ -164,22 +185,16 @@ source: "微信公众号"
 
 ${content}`;
   }
-  
+
   private sanitizeFileName(fileName: string): string {
     return fileName
       .replace(/[<>:"/\\|?*]/g, '_')
       .replace(/\s+/g, '_')
       .substring(0, 100);
   }
-  
-  private generateMockMarkdown(url: string): string {
-    return `# 模拟文章\n原文: ${url}\n\n这是一篇自动生成的测试文章。`;
-  }
-  
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-  
+
+
+
   setStoragePath(path: string): void {
     this.baseStoragePath = path;
   }
