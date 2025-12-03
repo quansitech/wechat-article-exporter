@@ -147,3 +147,65 @@ export interface IPipelineService {
   startCollection(subjectName: string, options?: CollectionOptions): Promise<string>;
   getStatus(taskId?: string, subjectName?: string): Promise<CollectionStatusResponse>;
 }
+
+/**
+ * 微信 API 相关类型定义
+ */
+
+export interface BaseResp {
+  ret: number;
+  err_msg: string;
+}
+
+export interface AccountInfo {
+  fakeid: string;
+  nickname: string;
+  alias: string;
+  round_head_img: string;
+  service_type: number;
+}
+
+export interface SearchBizResponse {
+  base_resp: BaseResp;
+  list: AccountInfo[];
+  total: number;
+}
+
+export interface AppMsgEx {
+  aid: string;
+  appmsgid: number;
+  cover: string;
+  create_time: number;
+  digest: string;
+  has_red_packet_cover: number;
+  is_pay_subscribe: number;
+  item_show_type: number;
+  itemidx: number;
+  link: string;
+  media_duration: string;
+  mediaapi_publish_status: number;
+  title: string;
+  update_time: number;
+}
+
+export interface PublishInfo {
+  type: number;
+  msgid: number;
+  appmsgid: number;
+  appmsgex: AppMsgEx[];
+}
+
+export interface PublishItem {
+  publish_type: number;
+  publish_info: string; // JSON string of PublishInfo
+}
+
+export interface PublishPage {
+  total_count: number;
+  publish_list: PublishItem[];
+}
+
+export interface AppMsgPublishResponse {
+  base_resp: BaseResp;
+  publish_page: string; // JSON string of PublishPage
+}

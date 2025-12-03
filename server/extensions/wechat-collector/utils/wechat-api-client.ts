@@ -7,12 +7,12 @@ import type {
     AppMsgEx,
     PublishInfo,
     PublishPage
-} from '~/types/types';
+} from '~/types/collection.types';
 import { registerTokenHook, registerCookieHook } from '~/server/utils/CookieStore';
 import { getAuthFromFile } from '~/server/utils/auth-file';
 
 /**
- * 微信 API 客户端（增强版）
+ * 微信 API 客户端
  * 统一处理对微信接口的请求，封装 Mock 切换、认证钩子、API日志等功能
  */
 export class WeChatApiClient {
@@ -155,19 +155,19 @@ export class WeChatApiClient {
             const allArticles = mockUtils.getArticles();
             const pageSize = 10;
             let currentPageArticles: AppMsgEx[] = [];
-            
+
             // 简单分页逻辑：假设 mockUtils.getArticles() 返回了足够的数据（例如15篇）
             // begin=0: 第一页（前pageSize篇）
             // begin=10: 第二页（第pageSize+1到2*pageSize篇）
             // begin>=20: 读取完成（空数组）
             const startIndex = begin;
             const endIndex = begin + pageSize;
-            
+
             if (startIndex < allArticles.length) {
                 currentPageArticles = allArticles.slice(startIndex, Math.min(endIndex, allArticles.length));
             }
             // 如果 startIndex >= allArticles.length，currentPageArticles 保持为空数组
-            
+
             const publishList = currentPageArticles.map(article => ({
                 publish_info: JSON.stringify({ appmsgex: [article] })
             }));

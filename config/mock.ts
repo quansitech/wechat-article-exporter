@@ -205,49 +205,41 @@ function helloWorld() {
   generateHtml(url: string): string {
     const articleId = url.split('/').pop() || 'unknown';
 
-    return `<html><head>
-<style>
-</style></head><body>
-<h1>测试文章标题</h1>
-<p><em>本文来自Mock数据，用于调试目的</em></p>
-<p>文章ID: ${articleId}</p>
-<p>生成时间: ${new Date().toISOString()}</p>
-
-<h2>文章摘要</h2>
-<p>这是通过Mock数据生成的测试文章内容。您可以使用这个接口来测试爬取流程，而无需依赖真实的微信公众号API。</p>
-
-<h2>主要内容</h2>
-
-<h3>章节一：介绍</h3>
-<p>这是第一个章节的内容。在真实环境中，这里会包含微信公众号文章的正文内容。</p>
-<ul>
-<li>列表项一</li>
-<li>列表项二</li>
-<li>列表项三</li>
-</ul>
-
-<h3>章节二：详细说明</h3>
-<p>这是第二个章节的内容，包含更多的详细信息。</p>
-<ol>
-<li>有序列表第一项</li>
-<li>有序列表第二项</li>
-<li>有序列表第三项</li>
-</ol>
-
-<h3>代码示例</h3>
-<pre><code class="language-javascript">// 这是一个JavaScript代码示例
-function helloWorld() {
-  console.log('Hello, Mock World!');
-  return 'Mock数据测试成功';
-}
-</code></pre>
-
-<h2>总结</h2>
-<p>这是一个完整的Mock HTML文档，包含了标题、段落、列表、代码块等常见元素。您可以根据需要修改这些内容来测试不同的场景。</p>
-
-<hr>
-<p><em>本文为Mock数据，仅用于开发和测试目的</em></p>
- </body></html>`;
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Mock Article</title>
+</head>
+<body>
+    <div id="js_content">
+        <h1>测试文章标题</h1>
+        <p><em>本文来自Mock数据，用于调试目的</em></p>
+        <p>文章ID: ${articleId}</p>
+        <p>生成时间: ${new Date().toISOString()}</p>
+        
+        <h2>1. 这是一个二级标题</h2>
+        <p>这是正文的第一段。Mock数据用于模拟真实环境下的数据流转。</p>
+        
+        <h2>2. 列表测试</h2>
+        <ul>
+            <li>列表项 1</li>
+            <li>列表项 2</li>
+            <li>列表项 3</li>
+        </ul>
+        
+        <h2>3. 代码块测试</h2>
+        <pre><code>
+console.log("Hello World");
+const a = 1;
+const b = 2;
+        </code></pre>
+        
+        <hr>
+        <p><em>本文为Mock数据，仅用于开发和测试目的</em></p>
+    </div>
+</body>
+</html>`;
   },
 
   // 生成Mock文本内容
@@ -271,8 +263,8 @@ function helloWorld() {
 这是第一个章节的内容。在真实环境中，这里会包含微信公众号文章的正文内容。
 
 - 列表项一
-- 列表项二
-- 列表项三
+  - 列表项二
+  - 列表项三
 
 章节二：详细说明
 
@@ -295,6 +287,6 @@ function helloWorld() {
 这是一个完整的Mock文本文档，包含了标题、段落、列表、代码块等常见元素。您可以根据需要修改这些内容来测试不同的场景。
 
 ---
-本文为Mock数据，仅用于开发和测试目的`;
+  本文为Mock数据，仅用于开发和测试目的`;
   }
 };
