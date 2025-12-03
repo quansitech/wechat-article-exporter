@@ -7,61 +7,69 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 // 1. 系统配置表 (存储 Cookie/Token)
 model SystemConfig {
-  key   String @id
-  value String
+  key   String @id @db.VarChar(255)
+  value String @db.Text
+
+  @@map("system_config")
 }
 
 // 2. 公众号表
 model Account {
-  id             String    @id // fakeid / biz
-  name           String
-  entityName     String?   // 搜索主体
+  id             String    @id @db.VarChar(255) // fakeid / biz
+  name           String    @db.VarChar(255)
+  entityName     String?   @map("entity_name") @db.VarChar(255) // 搜索主体
   
-  isVerified     Boolean   @default(false)
-  lastCrawlTime  DateTime? // 增量抓取锚点
+  isVerified     Boolean   @default(false) @map("is_verified")
+  lastCrawlTime  DateTime? @map("last_crawl_time") // 增量抓取锚点
   
-  extra          String?   // 存储 JSON 字符串 (intro, etc.)
+  extra          String?   @db.Text // 存储 JSON 字符串 (intro, etc.)
   
   articles       Article[]
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@map("account")
 }
 
 // 3. 文章表
 model Article {
-  id          String   @id // URL Hash
-  url         String   @unique
-  title       String
-  accountId   String
+  id          String   @id @db.VarChar(255) // URL Hash
+  url         String   @unique @db.Text // URL 可能很长
+  title       String   @db.VarChar(255)
+  accountId   String   @map("account_id") @db.VarChar(255)
   account     Account  @relation(fields: [accountId], references: [id])
   
-  publishTime BigInt?
+  publishTime BigInt?  @map("publish_time")
   
   // 状态机: 0-Pending, 1-Processing, 2-Done, 3-Failed
   status      Int      @default(0) 
   
-  localPath   String?  // Markdown 文件本地存储路径
-  content     String?  // Markdown 文本内容
-  extra       String?  // 元数据 JSON
+  localPath   String?  @map("local_path") @db.VarChar(255) // Markdown 文件本地存储路径
+  content     String?  @db.Text // Markdown 文本内容
+  extra       String?  @db.Text // 元数据 JSON
   
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("article")
 }
 
 // 4. 采集任务表 (用于持久化任务状态)
 model CollectionTask {
-  id          String   @id
-  subjectName String
-  status      String   // pending, running, completed, failed
-  progress    String   // JSON string: { step, percentage, accountsDiscovered, articlesCollected, articlesProcessed, message }
-  error       String?
+  id          String   @id @db.VarChar(255)
+  subjectName String   @map("subject_name") @db.VarChar(255)
+  status      String   @db.VarChar(50) // pending, running, completed, failed
+  progress    String   @db.Text // JSON string: { step, percentage, accountsDiscovered, articlesCollected, articlesProcessed, message }
+  error       String?  @db.Text
   
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("collection_task")
 }
