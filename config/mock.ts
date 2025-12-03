@@ -117,7 +117,7 @@ export const mockUtils = {
 
   // 获取Mock文章数据
   getArticles() {
-    const len = 30;
+    const len = 11;
     const articles = [...mockConfig.data.articles];
     for (let i = 2; i < len; i++) {
       const key = i + 1;
@@ -205,7 +205,10 @@ function helloWorld() {
   generateHtml(url: string): string {
     const articleId = url.split('/').pop() || 'unknown';
 
-    return `<h1>测试文章标题</h1>
+    return `<html><head>
+<style>
+</style></head><body>
+<h1>测试文章标题</h1>
 <p><em>本文来自Mock数据，用于调试目的</em></p>
 <p>文章ID: ${articleId}</p>
 <p>生成时间: ${new Date().toISOString()}</p>
@@ -243,7 +246,8 @@ function helloWorld() {
 <p>这是一个完整的Mock HTML文档，包含了标题、段落、列表、代码块等常见元素。您可以根据需要修改这些内容来测试不同的场景。</p>
 
 <hr>
-<p><em>本文为Mock数据，仅用于开发和测试目的</em></p>`;
+<p><em>本文为Mock数据，仅用于开发和测试目的</em></p>
+ </body></html>`;
   },
 
   // 生成Mock文本内容

@@ -147,7 +147,7 @@ export class ContentProcessorService implements IContentProcessorService {
         data: {
           status: 2, // Done
           localPath: filePath,
-          content: null // 根据需求，这里不存全文到DB
+          content: markdownContent
         }
       });
 
@@ -174,14 +174,7 @@ export class ContentProcessorService implements IContentProcessorService {
       const rawHtml = await wechatApiClient.downloadPage(url);
 
       const turndownService = new TurndownService();
-      // 配置 turndown 规则 (可选)
-      turndownService.addRule('ignoreScripts', {
-        filter: ['script', 'style'],
-        replacement: () => ''
-      });
-
-      const markdown = turndownService.turndown(normalizeHtml(rawHtml, 'html'));
-      return markdown;
+      return turndownService.turndown(normalizeHtml(rawHtml, 'html'));
 
     } catch (error) {
       console.error(`[ContentProcessor] 下载转换失败:`, error);
