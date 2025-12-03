@@ -29,9 +29,9 @@ export class ArticleCollectorService implements IArticleCollectorService {
         console.log(`[ArticleCollector] 采集公众号: ${account.nickname}`);
 
         // 增量检查
-        const shouldCollect = await this.checkIncremental(account);
-        if (!shouldCollect && !options?.forceRefresh) {
-          console.log(`[ArticleCollector] 跳过采集: ${account.nickname} (无新文章)`);
+        const shouldCollect = await this.checkIncremental(account, options?.forceRefresh);
+        if (!shouldCollect) {
+          console.log(`[ArticleCollector] 跳过采集: ${account.nickname} (增量检查未通过)`);
           continue;
         }
 
@@ -49,6 +49,9 @@ export class ArticleCollectorService implements IArticleCollectorService {
           data: { lastCrawlTime: new Date() }
         });
 
+        // 账号间随机延迟
+        await this.delay(2000 + Math.random() * 3000);
+
       } catch (error) {
         console.error(`[ArticleCollector] 采集公众号失败: ${account.nickname}`, error);
       }
@@ -61,11 +64,15 @@ export class ArticleCollectorService implements IArticleCollectorService {
   /**
    * 检查是否需要增量采集
    */
-  async checkIncremental(account: CollectionAccount): Promise<boolean> {
+  async checkIncremental(account: CollectionAccount, forceRefresh?: boolean): Promise<boolean> {
+    if (forceRefresh) return true;
+
     const now = new Date();
-    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    // 默认间隔 12 小时，可根据账号活跃度调整
+    const interval = 12 * 60 * 60 * 1000;
     const lastTime = account.lastCrawlTime || new Date(0);
-    return lastTime.getTime() === 0 || lastTime < twentyFourHoursAgo;
+
+    return now.getTime() - lastTime.getTime() > interval;
   }
 
   /**
@@ -78,7 +85,7 @@ export class ArticleCollectorService implements IArticleCollectorService {
 
     while (hasMore && allArticles.length < maxArticles) {
       try {
-        // 使用 WeChatApiClient 获取文章（新API返回对象）
+        // 使用 WeChatApiClient 获取文章
         const { articles, isCompleted } = await wechatApiClient.getArticleList(account.id, begin);
 
         if (articles && articles.length > 0) {
@@ -91,7 +98,8 @@ export class ArticleCollectorService implements IArticleCollectorService {
 
         if (isCompleted || allArticles.length >= maxArticles) hasMore = false;
 
-        await this.delay(1000 + Math.random() * 1000); // 随机延迟
+        // 分页间随机延迟
+        await this.delay(1500 + Math.random() * 1500);
 
       } catch (error) {
         console.error(`[ArticleCollector] fetchArticles error:`, error);
@@ -111,18 +119,13 @@ export class ArticleCollectorService implements IArticleCollectorService {
       try {
         const urlHash = this.generateUrlHash(article.link);
 
-        // 利用 Prisma create (如果冲突会抛错) 或 findUnique 预检查
-        // 推荐 upset 或 先查后插，这里简单起见先查后插
-        const existing = await prisma.article.findUnique({ where: { id: urlHash } });
-
-        if (existing) {
-          // 已存在，跳过
-          continue;
-        }
-
-        // 入库
-        const created = await prisma.article.create({
-          data: {
+        // 使用 upsert 替代 findUnique + create
+        // 如果已存在，则不进行任何操作 (update 空对象)
+        // 如果不存在，则创建
+        const savedArticle = await prisma.article.upsert({
+          where: { id: urlHash },
+          update: {}, // 已存在不更新，保持原有状态
+          create: {
             id: urlHash,
             url: article.link,
             title: article.title || '无标题',
@@ -132,21 +135,25 @@ export class ArticleCollectorService implements IArticleCollectorService {
           }
         });
 
-        const collectionArticle: CollectionArticle = {
-          id: created.id,
-          accountId,
-          url: created.url,
-          urlHash: created.id,
-          title: created.title,
-          status: 'pending',
-          createdAt: created.createdAt
-        };
+        // 只有当文章是新创建的（或者状态为 Pending）才加入队列
+        // 这里简单判断：如果 createTime 刚刚生成，说明是新的
+        // 或者我们可以检查 savedArticle.status === 0
+        if (savedArticle.status === 0) {
+          const collectionArticle: CollectionArticle = {
+            id: savedArticle.id,
+            accountId,
+            url: savedArticle.url,
+            urlHash: savedArticle.id,
+            title: savedArticle.title,
+            status: 'pending',
+            createdAt: savedArticle.createdAt
+          };
 
-        newCollectionArticles.push(collectionArticle);
-
-        // **关键步骤**: 将新任务立即推送到 ContentProcessor 队列
-        // 这样就实现了生产者产生的瞬间，消费者就开始工作
-        await contentProcessorService.addTask(collectionArticle);
+          // 避免重复加入队列（如果已经是 Pending 但未处理）
+          // 实际生产中可能需要 Redis Set 去重，这里简化处理
+          newCollectionArticles.push(collectionArticle);
+          await contentProcessorService.addTask(collectionArticle);
+        }
 
       } catch (error) {
         console.error(`[ArticleCollector] processArticles error:`, error);

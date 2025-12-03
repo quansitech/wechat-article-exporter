@@ -73,6 +73,7 @@ export interface StartCollectionResponse {
   taskId: string;
   status: 'started' | 'queued' | 'error';
   message: string;
+  timestamp: string;
 }
 
 export interface StatusQuery {

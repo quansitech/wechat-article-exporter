@@ -27,7 +27,8 @@ export default defineEventHandler(async (event): Promise<StartCollectionResponse
     return {
       taskId,
       status: 'started',
-      message: `采集任务已启动: ${taskId}`
+      message: `采集任务已启动: ${taskId}`,
+      timestamp: new Date().toISOString()
     };
 
   } catch (error) {

@@ -11,6 +11,8 @@ import { prisma } from './database.service';
 import { wechatApiClient } from '../utils/wechat-api-client';
 import TurndownService from 'turndown';
 import { normalizeHtml } from '~/server/utils';
+import { randomBytes } from 'crypto';
+
 /**
  * 内容处理服务
  * 负责消费文章处理任务，由 p-queue 调度
@@ -24,6 +26,32 @@ export class ContentProcessorService implements IContentProcessorService {
     this.queue.on('idle', () => {
       console.log(`[ContentProcessor] 队列已空闲`);
     });
+
+
+    this.restorePendingTasks().catch(err => {
+      console.error('[ContentProcessor] 恢复任务失败:', err);
+    });
+  }
+
+  /**
+   * 设置并发度
+   */
+  setConcurrency(concurrency: number): void {
+    if (concurrency > 0) {
+      this.queue.concurrency = concurrency;
+      console.log(`[ContentProcessor] 并发度已设置为: ${concurrency}`);
+    }
+  }
+
+  /**
+   * 获取队列状态
+   */
+  getQueueStats() {
+    return {
+      size: this.queue.size,
+      pending: this.queue.pending,
+      concurrency: this.queue.concurrency
+    };
   }
 
   /**
@@ -48,23 +76,30 @@ export class ContentProcessorService implements IContentProcessorService {
    * 恢复未完成的任务 (Pending -> Queue)
    */
   async restorePendingTasks(): Promise<void> {
-    const pendings = await prisma.article.findMany({
-      where: { status: 0 } // Pending
-    });
-    console.log(`[ContentProcessor] 恢复 ${pendings.length} 个挂起任务`);
+    try {
+      const pendings = await prisma.article.findMany({
+        where: { status: 0 } // Pending
+      });
 
-    for (const p of pendings) {
-      // 转换为 CollectionArticle 结构
-      const task: CollectionArticle = {
-        id: p.id,
-        accountId: p.accountId,
-        url: p.url,
-        urlHash: p.id,
-        title: p.title,
-        status: 'pending',
-        createdAt: p.createdAt
-      };
-      await this.addTask(task);
+      if (pendings.length === 0) return;
+
+      console.log(`[ContentProcessor] 恢复 ${pendings.length} 个挂起任务`);
+
+      for (const p of pendings) {
+        // 转换为 CollectionArticle 结构
+        const task: CollectionArticle = {
+          id: p.id,
+          accountId: p.accountId,
+          url: p.url,
+          urlHash: p.id,
+          title: p.title,
+          status: 'pending',
+          createdAt: p.createdAt
+        };
+        await this.addTask(task);
+      }
+    } catch (error) {
+      console.error('[ContentProcessor] 恢复任务查询失败:', error);
     }
   }
 
@@ -73,15 +108,13 @@ export class ContentProcessorService implements IContentProcessorService {
    */
   async process(articles: CollectionArticle[], options?: CollectionOptions): Promise<ArticleProcessResult[]> {
     if (options?.concurrency) {
-      this.queue.concurrency = options.concurrency;
+      this.setConcurrency(options.concurrency);
     }
 
     for (const article of articles) {
       this.addTask(article);
     }
 
-    // 注意：如果是流式调用，Promise 不会等待队列清空。
-    // 如果需要等待，可以 await this.queue.onIdle();
     return [];
   }
 
@@ -159,7 +192,10 @@ export class ContentProcessorService implements IContentProcessorService {
   async saveToFile(content: string, metadata: { title: string; author: string; date: Date }): Promise<string> {
     await this.ensureStorageDirectory();
     const sanitizedTitle = this.sanitizeFileName(metadata.title);
-    const fileName = `${sanitizedTitle}_${Math.floor(Date.now() / 1000)}.md`;
+
+    // 使用 时间戳 + 随机串 确保唯一性
+    const randomSuffix = randomBytes(4).toString('hex');
+    const fileName = `${sanitizedTitle}_${Date.now()}_${randomSuffix}.md`;
     const filePath = join(this.baseStoragePath, fileName);
 
     const fullContent = this.buildMarkdownFile(content, metadata);
@@ -192,8 +228,6 @@ ${content}`;
       .replace(/\s+/g, '_')
       .substring(0, 100);
   }
-
-
 
   setStoragePath(path: string): void {
     this.baseStoragePath = path;

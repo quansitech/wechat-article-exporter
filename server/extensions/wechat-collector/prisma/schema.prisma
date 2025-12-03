@@ -53,3 +53,15 @@ model Article {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// 4. 采集任务表 (用于持久化任务状态)
+model CollectionTask {
+  id          String   @id
+  subjectName String
+  status      String   // pending, running, completed, failed
+  progress    String   // JSON string: { step, percentage, accountsDiscovered, articlesCollected, articlesProcessed, message }
+  error       String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
