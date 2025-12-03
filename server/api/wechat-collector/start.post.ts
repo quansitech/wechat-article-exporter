@@ -40,7 +40,8 @@ export default defineEventHandler(async (event): Promise<StartCollectionResponse
     return {
       taskId: '',
       status: 'error',
-      message: `启动采集任务失败: ${errorMessage}`
+      message: `启动采集任务失败: ${errorMessage}`,
+      timestamp: new Date().toISOString()
     };
   }
 });
