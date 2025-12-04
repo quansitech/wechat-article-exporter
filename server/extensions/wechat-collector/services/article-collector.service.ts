@@ -22,7 +22,8 @@ export class ArticleCollectorService implements IArticleCollectorService {
     console.log(`[ArticleCollector] 开始采集文章，账号数量: ${accounts.length}`);
 
     const allArticles: CollectionArticle[] = [];
-    const maxArticles = options?.maxArticles || 100;
+    // 如果 maxArticles 未定义，则为 Infinity，表示采集所有
+    const maxArticles = options?.maxArticles ?? Infinity;
 
     for (const account of accounts) {
       // 检查取消信号

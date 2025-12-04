@@ -56,7 +56,7 @@ export interface CollectionArticle {
  * 采集选项
  */
 export interface CollectionOptions {
-  maxArticles?: number;     // 最大文章数，默认100
+  maxArticles?: number;     // 最大文章数，不传则采集所有
   forceRefresh?: boolean;   // 强制刷新，忽略增量检查
   concurrency?: number;     // 并发数，默认5
 }
