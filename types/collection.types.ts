@@ -137,10 +137,12 @@ export interface IContentProcessorService {
 
 export interface ITaskManagerService {
   createTask(subjectName: string, options?: CollectionOptions): Promise<string>;
-  getTask(taskId: string): CollectionTask | null;
-  getAllTasks(subjectName?: string): CollectionTask[];
+  getTask(taskId: string): Promise<CollectionTask | null>;
+  getAllTasks(subjectName?: string): Promise<CollectionTask[]>;
   updateTaskProgress(taskId: string, progress: Partial<CollectionTask['progress']>): Promise<void>;
   updateTaskStatus(taskId: string, status: CollectionTask['status'], error?: string): Promise<void>;
+  getStatus(taskId?: string, subjectName?: string): Promise<CollectionStatusResponse>;
+  cleanupExpiredTasks(): Promise<void>;
 }
 
 export interface IPipelineService {
