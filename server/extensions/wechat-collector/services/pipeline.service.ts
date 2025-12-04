@@ -156,8 +156,7 @@ export class PipelineService implements IPipelineService {
       });
 
       // 执行文章采集 (传递 signal 以支持中断)
-      // 注意：articleCollectorService.collect 需要更新以支持 signal，这里暂时只在循环间隙检查
-      const articles = await articleCollectorService.collect(accounts, options);
+      const articles = await articleCollectorService.collect(accounts, options, signal);
 
       // 更新任务进度
       await taskManagerService.updateTaskProgress(taskId, {

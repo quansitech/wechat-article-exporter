@@ -125,7 +125,7 @@ export interface IAccountDiscoveryService {
 }
 
 export interface IArticleCollectorService {
-  collect(accounts: CollectionAccount[], options?: CollectionOptions): Promise<CollectionArticle[]>;
+  collect(accounts: CollectionAccount[], options?: CollectionOptions, signal?: AbortSignal): Promise<CollectionArticle[]>;
   checkIncremental(account: CollectionAccount): Promise<boolean>;
 }
 

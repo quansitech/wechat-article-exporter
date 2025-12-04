@@ -18,13 +18,19 @@ export class ArticleCollectorService implements IArticleCollectorService {
   /**
    * 采集文章链接
    */
-  async collect(accounts: CollectionAccount[], options?: CollectionOptions): Promise<CollectionArticle[]> {
+  async collect(accounts: CollectionAccount[], options?: CollectionOptions, signal?: AbortSignal): Promise<CollectionArticle[]> {
     console.log(`[ArticleCollector] 开始采集文章，账号数量: ${accounts.length}`);
 
     const allArticles: CollectionArticle[] = [];
     const maxArticles = options?.maxArticles || 100;
 
     for (const account of accounts) {
+      // 检查取消信号
+      if (signal?.aborted) {
+        console.log('[ArticleCollector] 任务已取消，停止采集');
+        throw new Error('任务已取消');
+      }
+
       try {
         console.log(`[ArticleCollector] 采集公众号: ${account.nickname}`);
 
@@ -36,7 +42,7 @@ export class ArticleCollectorService implements IArticleCollectorService {
         }
 
         // API 获取文章
-        const articles = await this.fetchArticles(account, maxArticles);
+        const articles = await this.fetchArticles(account, maxArticles, signal);
         if (articles.length === 0) continue;
 
         // 入库 + 去重 + 推送到队列 (流式处理)
@@ -53,6 +59,7 @@ export class ArticleCollectorService implements IArticleCollectorService {
         await this.delay(2000 + Math.random() * 3000);
 
       } catch (error) {
+        if (signal?.aborted || (error instanceof Error && error.message === '任务已取消')) throw error;
         console.error(`[ArticleCollector] 采集公众号失败: ${account.nickname}`, error);
       }
     }
@@ -78,12 +85,15 @@ export class ArticleCollectorService implements IArticleCollectorService {
   /**
    * 获取文章列表 API Wrapper
    */
-  private async fetchArticles(account: CollectionAccount, maxArticles: number): Promise<any[]> {
+  private async fetchArticles(account: CollectionAccount, maxArticles: number, signal?: AbortSignal): Promise<any[]> {
     const allArticles: any[] = [];
     let begin = 0;
     let hasMore = true;
 
     while (hasMore && allArticles.length < maxArticles) {
+      // 检查取消信号
+      if (signal?.aborted) throw new Error('任务已取消');
+
       try {
         // 使用 WeChatApiClient 获取文章
         const { articles, isCompleted } = await wechatApiClient.getArticleList(account.id, begin);
@@ -102,6 +112,7 @@ export class ArticleCollectorService implements IArticleCollectorService {
         await this.delay(1500 + Math.random() * 1500);
 
       } catch (error) {
+        if (signal?.aborted || (error instanceof Error && error.message === '任务已取消')) throw error;
         console.error(`[ArticleCollector] fetchArticles error:`, error);
         hasMore = false;
       }
