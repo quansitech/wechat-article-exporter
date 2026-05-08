@@ -1,8 +1,10 @@
 # 编译层
 FROM node:22-alpine AS build-env
 
-# 安装 Yarn（Alpine 包管理器方式，轻量）
-RUN apk add --no-cache yarn
+# 安装 Yarn (pin a specific Yarn version)
+RUN corepack enable
+RUN corepack prepare yarn@1.22.22 --activate
+
 
 # 设置工作目录
 WORKDIR /app
@@ -23,7 +25,7 @@ RUN yarn build
 
 
 # 运行时层
-FROM node:22-alpine
+FROM node:22-slim
 
 ARG VERSION=unknown
 
@@ -35,11 +37,21 @@ LABEL maintainer="findsource@proton.me" \
       org.opencontainers.image.description="一个在线的微信公众号文章批量下载工具，支持下载阅读量与评论数据，支持私有化部署，通过浏览器进行使用，无需进行安装" \
       org.opencontainers.image.licenses="MIT"
 
+# 安装 Chromium、中文字体和 CA 证书
+RUN apt-get update && apt-get install -y \
+    chromium fonts-noto-cjk fonts-noto-color-emoji ca-certificates \
+    --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
 # 设置工作目录
 WORKDIR /app
 
 # 复制构建输出
 COPY --from=build-env /app/.output ./
+# puppeteer 被 Rollup external 排除，运行时需要从 node_modules 加载（Chromium 已通过 apt 安装，跳过下载）
+RUN npm install --no-save --ignore-scripts puppeteer@24
 
 # 创建 KV 存储目录并设置权限（以 root 运行，确保 node 用户可写）
 RUN mkdir -p .data/kv && chown -R node:node /app

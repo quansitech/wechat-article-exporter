@@ -33,7 +33,7 @@ export type ResourceSelectors = {
   [key: string]: string;
 };
 
-export type Listener = (...args: any[]) => void;
+export type Callback = (...args: any[]) => void;
 
 export interface DownloaderStatus {
   pending: string[];

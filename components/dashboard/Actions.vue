@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type { ChipColor } from '#ui/types';
 import CredentialsDialog, { type CredentialState } from '~/components/global/CredentialsDialog.vue';
+import QQGroupModal from '~/components/modal/QQGroup.vue';
 import { docsWebSite } from '~/config';
 import { gotoLink } from '~/utils';
-import QQGroupModal from '~/components/modal/QQGroup.vue';
 
 const modal = useModal();
 

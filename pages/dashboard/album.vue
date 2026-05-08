@@ -121,22 +121,24 @@
 </template>
 
 <script setup lang="ts">
-import { type Info } from '~/store/v2/info';
-import type { AppMsgAlbumInfo, DownloadableArticle } from '~/types/types';
-import { ArrowDownNarrowWide, ArrowUpNarrowWide, Loader } from 'lucide-vue-next';
-import type { AppMsgAlbumResult, ArticleItem, BaseInfo } from '~/types/album';
 import { vElementVisibility } from '@vueuse/components';
-import { useDownloadAlbum } from '~/composables/useBatchDownload';
-import { formatAlbumTime } from '~/utils/album';
-import { gotoLink, sleep } from '~/utils';
-import { websiteName } from '~/config';
+import { ArrowDownNarrowWide, ArrowUpNarrowWide, Loader } from 'lucide-vue-next';
+import { sleep } from '#shared/utils/helpers';
+import { request } from '#shared/utils/request';
 import AccountSelectorForAlbum from '~/components/selector/AccountSelectorForAlbum.vue';
+import { useDownloadAlbum } from '~/composables/useBatchDownload';
+import { websiteName } from '~/config';
+import { type MpAccount } from '~/store/v2/info';
+import type { AppMsgAlbumResult, ArticleItem, BaseInfo } from '~/types/album';
+import type { AppMsgAlbumInfo, DownloadableArticle } from '~/types/types';
+import { gotoLink } from '~/utils';
+import { formatAlbumTime } from '~/utils/album';
 
 useHead({
   title: `合集下载 | ${websiteName}`,
 });
 
-interface AccountInfo extends Info {
+interface AccountInfo extends MpAccount {
   albums?: AppMsgAlbumInfo[];
 }
 
@@ -193,8 +195,7 @@ async function getFirstPageAlbumData(refreshPage = true) {
     (controller.value as AbortController).abort('切换tab，取消pending中的请求');
   }
   controller.value = new AbortController();
-  const data = await $fetch<AppMsgAlbumResult>('/api/web/misc/appmsgalbum', {
-    method: 'GET',
+  const data = await request<AppMsgAlbumResult>('/api/web/misc/appmsgalbum', {
     query: {
       fakeid: selectedAccount.value!.fakeid,
       album_id: selectedAlbum.value!.id,
@@ -246,8 +247,7 @@ async function loadMoreData() {
   controller.value = new AbortController();
 
   const lastArticle = albumArticles[albumArticles.length - 1];
-  const data = await $fetch<AppMsgAlbumResult>('/api/web/misc/appmsgalbum', {
-    method: 'GET',
+  const data = await request<AppMsgAlbumResult>('/api/web/misc/appmsgalbum', {
     query: {
       fakeid: selectedAccount.value!.fakeid,
       album_id: selectedAlbum.value!.id,

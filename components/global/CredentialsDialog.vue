@@ -98,25 +98,38 @@
           <li
             v-for="credential in credentials"
             :key="credential.biz"
-            class="border rounded-md hover:ring ring-blue-500 hover:shadow-md transition-all duration-300 px-8 py-3"
+            class="relative flex items-center border rounded-md hover:ring ring-blue-500 hover:shadow-md transition-all duration-300 p-3 space-x-5"
           >
-            <p>公众号名称：{{ credential.nickname || '--' }}</p>
-            <p>fakeid: {{ credential.biz }}</p>
-            <p>获取时间: {{ credential.time }}</p>
-            <div class="flex items-center justify-between mt-4">
-              <span v-if="credential.valid" class="font-sans font-bold text-green-500">有效</span>
-              <span v-else class="font-sans font-bold text-rose-500">已过期</span>
-              <UButton
-                size="xs"
-                :color="credential.added ? 'green' : 'blue'"
-                :variant="credential.added ? 'soft' : 'solid'"
-                :disabled="credential.added || addingBiz === credential.biz"
-                :loading="addingBiz === credential.biz"
-                @click="addAccount(credential)"
-              >
-                {{ credential.added ? '已添加' : '添加公众号' }}
-              </UButton>
+            <div class="size-20 border rounded-full">
+              <img :src="credential.avatar" alt="" />
             </div>
+            <div class="flex-1">
+              <p>公众号名称：{{ credential.nickname || '--' }}</p>
+              <p>fakeid: {{ credential.biz }}</p>
+              <p>获取时间: {{ credential.time }}</p>
+              <div class="flex items-center justify-between mt-4">
+                <span v-if="credential.valid" class="font-sans font-bold text-green-500">有效</span>
+                <span v-else class="font-sans font-bold text-rose-500">已过期</span>
+                <UButton
+                  size="xs"
+                  :color="credential.added ? 'green' : 'blue'"
+                  :variant="credential.added ? 'soft' : 'solid'"
+                  :disabled="credential.added || addingBiz === credential.biz"
+                  :loading="addingBiz === credential.biz"
+                  @click="addAccount(credential)"
+                >
+                  {{ credential.added ? '已添加' : '添加公众号' }}
+                </UButton>
+              </div>
+            </div>
+            <UButton
+              v-if="isDev"
+              :loading="pullArticleLoading"
+              class="absolute top-3 right-3"
+              @click="pullData(credential.biz)"
+            >
+              拉取数据
+            </UButton>
           </li>
         </ul>
       </div>
@@ -125,15 +138,14 @@
 </template>
 
 <script setup lang="ts">
-import { useEventBus } from '@vueuse/core';
 import dayjs from 'dayjs';
-import { getArticleList } from '~/apis';
+import { getArticleList, getArticleListWithCredential } from '~/apis';
 import LoginModal from '~/components/modal/Login.vue';
 import toastFactory from '~/composables/toast';
-import { CREDENTIAL_API_HOST, CREDENTIAL_LIVE_MINUTES } from '~/config';
-import { getInfoCache, type Info } from '~/store/v2/info';
+import useLoginCheck from '~/composables/useLoginCheck';
+import { CREDENTIAL_API_HOST, CREDENTIAL_LIVE_MINUTES, isDev } from '~/config';
+import { getInfoCache, type MpAccount } from '~/store/v2/info';
 import type { ParsedCredential } from '~/types/credential';
-import type { AccountEvent } from '~/types/events';
 
 export type CredentialState = 'active' | 'inactive' | 'warning';
 
@@ -143,6 +155,14 @@ const emit = defineEmits<{
 
 const open = defineModel<boolean>('open', { default: false });
 const state = defineModel<CredentialState>('state', { default: 'inactive' });
+
+const pullArticleLoading = ref(false);
+async function pullData(fakeid: string) {
+  pullArticleLoading.value = true;
+  const articles = await getArticleListWithCredential(fakeid);
+  console.log(articles);
+  pullArticleLoading.value = false;
+}
 
 const tabs = [
   {
@@ -155,6 +175,8 @@ const tabs = [
   },
 ];
 
+const { checkLogin } = useLoginCheck();
+
 const credentials = useLocalStorage<ParsedCredential[]>('auto-detect-credentials:credentials', []);
 for (const item of credentials.value) {
   item.valid = Date.now() < item.timestamp + 1000 * 60 * CREDENTIAL_LIVE_MINUTES;
@@ -163,17 +185,37 @@ const validCredentialCount = computed(() => credentials.value.filter(c => c.vali
 const pendingCredentialCount = computed(() => credentials.value.filter(c => c.valid && !c.added).length);
 const toast = toastFactory();
 const modal = useModal();
-const loginAccount = useLoginAccount();
-const addingBiz = ref<string | null>(null);
-// 账号事件总线，用于和管理页面同步添加/删除状态
-const accountEventBus = useEventBus<AccountEvent>('account-event');
 
-function checkLogin() {
-  if (loginAccount.value === null) {
-    modal.open(LoginModal);
-    return false;
+const addingBiz = ref<string | null>(null);
+
+/**
+ * 从 set_cookie 字符串中解析 appmsg_token 和完整 cookie 字符串
+ * set_cookie 格式: "name=value; Path=/; HttpOnly, name2=value2; Path=/; HttpOnly, ..."
+ */
+function parseSetCookie(setCookie: string): { appmsg_token: string; cookie: string } {
+  let appmsg_token = '';
+  const tokenMatch = setCookie.match(/appmsg_token=(?<token>[^;]+)/);
+  if (tokenMatch?.groups?.token) {
+    appmsg_token = decodeURIComponent(tokenMatch.groups.token.trim());
   }
-  return true;
+
+  // 按逗号分隔各 cookie 条目，提取有效的 name=value 对
+  const cookieParts: string[] = [];
+  const entries = setCookie.split(',');
+  for (const entry of entries) {
+    const nameValue = entry.trim().split(';')[0].trim();
+    if (!nameValue || !nameValue.includes('=')) continue;
+    // 跳过 EXPIRED 值和纯属性条目
+    if (nameValue.includes('EXPIRED')) continue;
+    const name = nameValue.split('=')[0].trim();
+    if (['Path', 'Expires', 'HttpOnly', 'Secure', 'Domain', 'SameSite'].includes(name)) continue;
+    // 跳过空值（如 rewardsn=）
+    const value = nameValue.split('=').slice(1).join('=');
+    if (!value) continue;
+    cookieParts.push(nameValue);
+  }
+
+  return { appmsg_token, cookie: cookieParts.join('; ') };
 }
 
 async function refreshCredentialAddedState() {
@@ -185,14 +227,15 @@ async function refreshCredentialAddedState() {
 }
 
 // 监听账号事件，及时更新当前凭据项的按钮状态
-const stopAccountEvent = accountEventBus.on(event => {
-  if (event.type === 'account-added') {
-    const target = credentials.value.find(item => item.biz === event.fakeid);
+const { accountEventBus } = useAccountEventBus();
+accountEventBus.on((event, payload) => {
+  if (event === 'account-added') {
+    const target = credentials.value.find(item => item.biz === payload?.fakeid);
     if (target) {
       target.added = true;
     }
-  } else if (event.type === 'account-removed') {
-    const target = credentials.value.find(item => item.biz === event.fakeid);
+  } else if (event === 'account-removed') {
+    const target = credentials.value.find(item => item.biz === payload?.fakeid);
     if (target) {
       target.added = false;
     }
@@ -262,7 +305,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  stopAccountEvent();
   clearRetryTimer();
 });
 
@@ -357,6 +399,9 @@ async function fetchCredentials() {
     if (matchResult && matchResult.groups && matchResult.groups.wap_sid2) {
       wap_sid2 = matchResult.groups.wap_sid2;
     }
+
+    const { appmsg_token, cookie } = parseSetCookie(item.set_cookie);
+
     // 验证完整性
     if (!__biz || !uin || !key || !pass_ticket || !wap_sid2) {
       continue;
@@ -371,6 +416,8 @@ async function fetchCredentials() {
       key: key,
       pass_ticket: pass_ticket,
       wap_sid2: wap_sid2,
+      appmsg_token: appmsg_token,
+      cookie: cookie,
       timestamp: item.timestamp,
       time: dayjs(item.timestamp).format('YYYY-MM-DD HH:mm:ss'),
       valid: Date.now() < item.timestamp + 1000 * 60 * CREDENTIAL_LIVE_MINUTES,
@@ -380,7 +427,7 @@ async function fetchCredentials() {
   credentials.value = _credentials.sort((a, b) => b.timestamp - a.timestamp);
 }
 
-const wsURL = ref('ws://127.0.0.1:65001');
+const wsURL = ref('wss://127.0.0.1:65001');
 const wsMonitoring = ref(false);
 let _ws: WebSocket | null = null;
 
@@ -420,6 +467,9 @@ async function startListenService(isManual = false) {
       if (matchResult && matchResult.groups && matchResult.groups.wap_sid2) {
         wap_sid2 = matchResult.groups.wap_sid2;
       }
+
+      const { appmsg_token, cookie } = parseSetCookie(item.set_cookie);
+
       // 验证完整性
       if (!__biz || !uin || !key || !pass_ticket || !wap_sid2) {
         continue;
@@ -434,6 +484,8 @@ async function startListenService(isManual = false) {
         key: key,
         pass_ticket: pass_ticket,
         wap_sid2: wap_sid2,
+        appmsg_token: appmsg_token,
+        cookie: cookie,
         timestamp: item.timestamp,
         time: dayjs(item.timestamp).format('YYYY-MM-DD HH:mm:ss'),
         valid: Date.now() < item.timestamp + 1000 * 60 * CREDENTIAL_LIVE_MINUTES,
@@ -469,7 +521,7 @@ async function addAccount(credential: ParsedCredential) {
 
   addingBiz.value = credential.biz;
   const nickname = credential.nickname || credential.biz;
-  const account: Info = {
+  const account: MpAccount = {
     fakeid: credential.biz,
     completed: false,
     count: 0,
@@ -484,7 +536,7 @@ async function addAccount(credential: ParsedCredential) {
     credential.added = true;
     toast.success('公众号添加成功', `已成功添加公众号【${nickname}】`);
     // 通知其他视图（如公众号管理列表）立即刷新
-    accountEventBus.emit({ type: 'account-added', fakeid: credential.biz });
+    accountEventBus.emit('account-added', { fakeid: credential.biz });
   } catch (error: any) {
     if (error?.message === 'session expired') {
       modal.open(LoginModal);

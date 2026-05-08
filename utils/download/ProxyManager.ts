@@ -1,5 +1,5 @@
-import type { ProxyStatus } from './types';
 import { DEFAULT_OPTIONS } from './constants';
+import type { ProxyStatus } from './types';
 
 export class ProxyManager {
   private readonly proxies: string[];

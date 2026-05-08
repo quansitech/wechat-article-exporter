@@ -2,8 +2,8 @@
  * 获取文章列表接口
  */
 
-import { proxyMpRequest } from '~/server/utils/proxy-request';
 import { getTokenFromStore } from '~/server/utils/CookieStore';
+import { proxyMpRequest } from '~/server/utils/proxy-request';
 
 interface AppMsgPublishQuery {
   begin?: number;
@@ -14,6 +14,9 @@ interface AppMsgPublishQuery {
 
 export default defineEventHandler(async event => {
   const token = await getTokenFromStore(event);
+  if (!token) {
+    return { base_resp: { ret: -1, err_msg: '未登录或登录已过期，请重新扫码登录' } };
+  }
 
   const query = getQuery<AppMsgPublishQuery>(event);
   const id = query.id;
@@ -33,7 +36,7 @@ export default defineEventHandler(async event => {
     type: '101_1',
     free_publish_type: 1,
     sub_action: 'list_ex',
-    token: token!,
+    token: token,
     lang: 'zh_CN',
     f: 'json',
     ajax: 1,

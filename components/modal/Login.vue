@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader, X } from 'lucide-vue-next';
+import { request } from '#shared/utils/request';
 import type { LoginAccount, ScanLoginResult, StartLoginResult } from '~/types/types';
 
 const modal = useModal();
@@ -16,10 +16,10 @@ onMounted(() => {
   getQrcode();
 });
 
-function onClose() {
+function closeModal() {
   modal.close();
 
-  clearTimeout(checkTimer.value!);
+  window.clearTimeout(checkTimer.value!);
   checkTimer.value = null;
 }
 
@@ -30,7 +30,7 @@ function onClose() {
  */
 async function newLoginSession() {
   const sid = new Date().getTime().toString() + Math.floor(Math.random() * 100);
-  const resp = await $fetch<StartLoginResult>(`/api/web/login/session/${sid}`, { method: 'POST' });
+  const resp = await request<StartLoginResult>(`/api/web/login/session/${sid}`, { method: 'POST' });
   if (!resp || !resp.base_resp || resp.base_resp.ret !== 0) {
     throw new Error(`${resp?.base_resp?.err_msg || '获取登录会话失败'}`);
   }
@@ -57,14 +57,15 @@ async function getQrcode() {
 
 function _check() {
   window.clearTimeout(checkTimer.value!);
-  checkTimer.value = window.setTimeout(checkQrcodeStatus, 2000);
+
+  if (modal.isOpen.value) {
+    checkTimer.value = window.setTimeout(checkQrcodeStatus, 2000);
+  }
 }
 
 // 检查二维码扫描状态
 async function checkQrcodeStatus() {
-  const resp = await $fetch<ScanLoginResult>('/api/web/login/scan', {
-    method: 'GET',
-  });
+  const resp = await request<ScanLoginResult>('/api/web/login/scan');
   if (resp && resp.base_resp && resp.base_resp.ret === 0) {
     switch (resp.status) {
       case 0:
@@ -104,7 +105,7 @@ async function checkQrcodeStatus() {
 async function bizLogin() {
   try {
     loading.value = true;
-    const resp = await $fetch<LoginAccount>('/api/web/login/bizlogin', {
+    const resp = await request<LoginAccount>('/api/web/login/bizlogin', {
       method: 'POST',
     });
     if (resp.err) {
@@ -114,7 +115,7 @@ async function bizLogin() {
     msg.value = '登录成功';
     loginAccount.value = resp;
 
-    onClose();
+    closeModal();
   } catch (e: any) {
     msg.value = e.message;
   } finally {
@@ -128,14 +129,19 @@ async function bizLogin() {
     <UCard>
       <template #header>
         <h2 class="text-lg font-semibold">登录微信公众号</h2>
-        <UButton square variant="link" color="gray" class="absolute right-3 top-3" @click="onClose">
-          <X />
-        </UButton>
+        <UButton
+          square
+          variant="link"
+          color="gray"
+          icon="i-lucide:x"
+          class="absolute right-3 top-3"
+          @click="closeModal"
+        />
       </template>
 
       <!-- 二维码图片展示区 -->
       <div class="flex flex-col justify-center items-center mx-auto size-80">
-        <Loader v-if="loading" :size="28" class="animate-spin text-slate-500" />
+        <UIcon v-if="loading" name="i-lucide:loader" :size="28" class="animate-spin text-slate-500" />
         <p v-if="msg" class="text-rose-500">{{ msg }}</p>
         <img v-if="qrcodeSrc" :src="qrcodeSrc" alt="" class="w-full rounded-md" />
       </div>

@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import type { ICellRendererParams } from 'ag-grid-community';
+
 interface Props {
   params: ICellRendererParams;
 }
 const props = defineProps<Props>();
 
 const count = ref(props.params.data.count);
-const total = ref(props.params.data.total_count);
+const total = ref(props.params.data.total_count || Number.MAX_SAFE_INTEGER);
 
 function refresh(params: ICellRendererParams): boolean {
   count.value = params.data.count;
-  total.value = params.data.total_count;
+  total.value = params.data.total_count || Number.MAX_SAFE_INTEGER;
   return true;
 }
 </script>

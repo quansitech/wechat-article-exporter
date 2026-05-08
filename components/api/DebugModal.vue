@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { apis } from '~/config';
 import type { FormError } from '#ui/types';
 import CodeSegment from '~/components/api/CodeSegment.vue';
+import { apis } from '~/config/public-apis';
 
 interface Props {
   initialSelected: string;

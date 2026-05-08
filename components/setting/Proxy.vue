@@ -43,9 +43,9 @@
 </template>
 
 <script setup lang="ts">
+import ExternalLink from '~/components/base/ExternalLink.vue';
 import { docsWebSite } from '~/config';
 import type { Preferences } from '~/types/preferences';
-import ExternalLink from '~/components/base/ExternalLink.vue';
 
 const preferences: Ref<Preferences> = usePreferences() as unknown as Ref<Preferences>;
 

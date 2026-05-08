@@ -1,24 +1,25 @@
-import { BaseDownload } from '~/utils/download/BaseDownload';
-import type { DownloadOptions } from './types';
-import type { Metadata } from '~/store/v2/metadata';
-import type { ParsedCredential } from '~/types/credential';
-import type { CommentResponse, ReplyResponse } from '~/types/comment';
-import type { Preferences } from '~/types/preferences';
-import { getHtmlCache, updateHtmlCache } from '~/store/v2/html';
-import { updateMetadataCache } from '~/store/v2/metadata';
-import { updateDebugCache } from '~/store/v2/debug';
+import { throwException, timeout } from '#shared/utils/helpers';
+import { parseCgiDataNew, validateHTMLContent } from '#shared/utils/html';
+import usePreferences from '~/composables/usePreferences';
+import { getArticleByLink, getSingleArticleByLink } from '~/store/v2/article';
 import { updateCommentCache } from '~/store/v2/comment';
 import { updateCommentReplyCache } from '~/store/v2/comment_reply';
-import { getArticleByLink } from '~/store/v2/article';
-import { timeout, throwException } from '~/utils';
-import usePreferences from '~/composables/usePreferences';
+import { updateDebugCache } from '~/store/v2/debug';
+import { getHtmlCache, updateHtmlCache } from '~/store/v2/html';
+import type { Metadata } from '~/store/v2/metadata';
+import { updateMetadataCache } from '~/store/v2/metadata';
+import type { CommentResponse, ReplyResponse } from '~/types/comment';
+import type { ParsedCredential } from '~/types/credential';
+import type { Preferences } from '~/types/preferences';
+import { BaseDownloader } from '~/utils/download/BaseDownloader';
+import type { DownloadOptions } from './types';
 
-type DownloadType = 'html' | 'metadata' | 'comments';
+type DownloadType = 'html' | 'metadata' | 'comments' | 'fakeid';
 
 const credentials = useLocalStorage<ParsedCredential[]>('auto-detect-credentials:credentials', []);
 const preferences: Ref<Preferences> = usePreferences() as unknown as Ref<Preferences>;
 
-export class Downloader extends BaseDownload {
+export class Downloader extends BaseDownloader {
   // 下载的类型
   private downloadType: DownloadType = 'html';
 
@@ -30,12 +31,12 @@ export class Downloader extends BaseDownload {
 
   // 启动抓取任务
   public async startDownload(type: DownloadType) {
-    if (this.isProcessing) {
+    if (this.isRunning) {
       throw new Error('下载任务正在运行中，无需重复启动');
     }
     this.downloadType = type;
 
-    this.isProcessing = true;
+    this.isRunning = true;
     const start = Date.now();
     this.emit('download:begin');
     if (['metadata', 'comments'].includes(this.downloadType) && this.options.concurrency > 2) {
@@ -46,7 +47,7 @@ export class Downloader extends BaseDownload {
     try {
       await this.processDownloadQueue();
     } finally {
-      this.isProcessing = false;
+      this.isRunning = false;
       const elapse = Math.round((Date.now() - start) / 1000);
       this.emit('download:finish', elapse, this.getStatus());
       this.cancelAllPending();
@@ -60,13 +61,13 @@ export class Downloader extends BaseDownload {
 
   // 处理下载任务队列
   private async processDownloadQueue() {
-    const activePromises: Promise<any>[] = [];
+    const activePromises: Set<Promise<any>> = new Set();
 
-    begin: while (this.urls.length > 0 || activePromises.length > 0) {
+    begin: while (this.urls.length > 0 || activePromises.size > 0) {
       // 检查是否需要启动新的下载任务，需同时满足以下两点:
       // - 没有达到并发量限制
       // - 还有更多 URL 需要下载
-      while (activePromises.length < this.options.concurrency && this.urls.length > 0) {
+      while (activePromises.size < this.options.concurrency && this.urls.length > 0) {
         if (this.isStopping) {
           break begin;
         }
@@ -74,12 +75,9 @@ export class Downloader extends BaseDownload {
         // 启动新的下载任务
         const url: string = this.urls.pop()!;
         const promise = this.processTask(url);
-        activePromises.push(promise);
+        activePromises.add(promise);
         promise.finally(() => {
-          const index = activePromises.indexOf(promise);
-          if (index > -1) {
-            activePromises.splice(index, 1);
-          }
+          activePromises.delete(promise);
 
           // 下载任务结束，触发通知
           this.emit('download:progress', url, this.completed.has(url), this.getStatus());
@@ -87,7 +85,7 @@ export class Downloader extends BaseDownload {
       }
 
       // 等待任何活动任务完成
-      if (activePromises.length > 0) {
+      if (activePromises.size > 0) {
         await Promise.race(activePromises);
       }
     }
@@ -104,7 +102,44 @@ export class Downloader extends BaseDownload {
       return this.downloadMetadataTask(url);
     } else if (this.downloadType === 'comments') {
       return this.downloadCommentsTask(url);
+    } else if (this.downloadType === 'fakeid') {
+      return this.fixSingleFakeidTask(url);
     }
+  }
+
+  // 修复单篇文章下载时的虚假fakeid
+  private async fixSingleFakeidTask(url: string) {
+    this.pending.add(url);
+
+    const article = await getSingleArticleByLink(url);
+    if (!article) {
+      this.pending.delete(url);
+      this.failed.add(url);
+      return;
+    }
+
+    for (let attempt = 0; attempt < this.options.maxRetries; attempt++) {
+      const proxy = this.proxyManager.getBestProxy();
+
+      try {
+        const blob = await this.download(article.fakeid, url, proxy, false);
+        const html = await blob.text();
+        const cgiData = await parseCgiDataNew(html);
+        if (cgiData && cgiData.bizuin) {
+          this.emit('fix:fakeid', url, cgiData.bizuin);
+
+          this.pending.delete(url);
+          this.completed.add(url);
+          this.proxyManager.recordSuccess(proxy);
+          return;
+        }
+      } catch (error) {
+        await this.handleDownloadFailure(proxy, url, attempt, error);
+      }
+    }
+
+    this.pending.delete(url);
+    this.failed.add(url);
   }
 
   // 下载 HTML 任务
@@ -128,13 +163,16 @@ export class Downloader extends BaseDownload {
       return;
     }
 
+    // 付费文章需要使用 credential 来获取完整内容
+    const withCredential = article.is_pay_subscribe === 1;
+
     for (let attempt = 0; attempt < this.options.maxRetries; attempt++) {
       const proxy = this.proxyManager.getBestProxy();
 
       try {
-        const blob = await this.download(article.fakeid, url, proxy, false);
+        const blob = await this.download(article.fakeid, url, proxy, withCredential);
         const html = await blob.text();
-        const [status, commentID] = this.validateHTMLContent(html);
+        const [status, commentID] = validateHTMLContent(html);
         if (status === 'Success') {
           // 下载成功
           await updateHtmlCache({
@@ -151,41 +189,40 @@ export class Downloader extends BaseDownload {
         } else if (status === 'Deleted') {
           // 文章被删除
           console.warn(`文章(url: ${url} )已被删除`);
-          await updateDebugCache({
-            fakeid: article.fakeid,
-            type: 'deleted',
-            url: url,
-            title: article.title,
-            file: blob,
-          });
+
           // 通知外边更新删除状态
           this.emit('download:deleted', url);
           this.pending.delete(url);
           this.deleted.add(url);
           this.proxyManager.recordSuccess(proxy);
           return;
-        } else if (status === 'Checking') {
-          // 内容审核中(大概率也跟删除没啥区别)
-          console.warn(`文章(url: ${url} )内容审核中`);
+        } else if (status === 'Exception' && commentID) {
+          // 文章状态异常
+          console.warn(`文章(url: ${url} )状态异常: ${commentID}`);
+
+          // 通知外边更新文章状态
+          this.emit('download:exception', url, commentID);
+          this.pending.delete(url);
+          this.failed.add(url);
+          this.proxyManager.recordSuccess(proxy);
+          return;
+        } else if (status === 'Exception' && !commentID) {
+          // 文章下载失败(风控导致的)
+          console.warn(`文章(url: ${url} )下载失败(风控所致)`);
           await updateDebugCache({
             fakeid: article.fakeid,
-            type: 'checking',
+            type: `exception:${commentID}`,
             url: url,
             title: article.title,
             file: blob,
           });
-          // 通知外边更新删除状态
-          this.emit('download:checking', url);
-          this.pending.delete(url);
-          this.deleted.add(url);
-          this.proxyManager.recordSuccess(proxy);
-          return;
-        } else if (status === 'Failure') {
+          throwException(`文章(url: ${url} )下载失败`);
+        } else if (status === 'Error') {
           // 下载失败
           console.warn(`文章(url: ${url} )解析失败`);
           await updateDebugCache({
             fakeid: article.fakeid,
-            type: 'failure',
+            type: 'parse error',
             url: url,
             title: article.title,
             file: blob,
@@ -227,18 +264,21 @@ export class Downloader extends BaseDownload {
       try {
         const blob = await this.download(article.fakeid, url, proxy, true);
         const html = await blob.text();
-        const [status, commentID] = this.validateHTMLContent(html);
+        const [status, commentID] = validateHTMLContent(html);
         if (status === 'Success') {
           // 下载成功
           await this.processHtmlMetadata(blob, url);
+
           // 抓取阅读量时，将带有阅读量的html更新到缓存
-          await updateHtmlCache({
-            fakeid: article.fakeid,
-            url: url,
-            title: article.title,
-            file: blob,
-            commentID,
-          });
+          if (preferences.value.downloadConfig.metadataOverrideContent) {
+            await updateHtmlCache({
+              fakeid: article.fakeid,
+              url: url,
+              title: article.title,
+              file: blob,
+              commentID,
+            });
+          }
           this.pending.delete(url);
           this.completed.add(url);
           this.proxyManager.recordSuccess(proxy);
@@ -246,41 +286,40 @@ export class Downloader extends BaseDownload {
         } else if (status === 'Deleted') {
           // 文章被删除
           console.warn(`获取阅读量时发现文章(url: ${url} )已被删除`);
-          await updateDebugCache({
-            fakeid: article.fakeid,
-            type: 'deleted',
-            url: url,
-            title: article.title,
-            file: blob,
-          });
+
           // 通知外边更新删除状态
           this.emit('download:deleted', url);
           this.pending.delete(url);
           this.deleted.add(url);
           this.proxyManager.recordSuccess(proxy);
           return;
-        } else if (status === 'Checking') {
-          // 内容审核中(大概率也跟删除没啥区别)
-          console.warn(`获取阅读量时发现文章(url: ${url} )内容审核中`);
+        } else if (status === 'Exception' && commentID) {
+          // 文章状态异常，此时 commentID 表示的异常原因
+          console.warn(`获取阅读量时发现文章(url: ${url} )状态异常: ${commentID}`);
+
+          // 通知外边更新文章状态
+          this.emit('download:exception', url, commentID);
+          this.pending.delete(url);
+          this.failed.add(url);
+          this.proxyManager.recordSuccess(proxy);
+          return;
+        } else if (status === 'Exception' && !commentID) {
+          // 文章下载失败(风控导致的)
+          console.warn(`文章(url: ${url} )下载失败(风控所致)`);
           await updateDebugCache({
             fakeid: article.fakeid,
-            type: 'checking',
+            type: `exception:${commentID}`,
             url: url,
             title: article.title,
             file: blob,
           });
-          // 通知外边更新删除状态
-          this.emit('download:checking', url);
-          this.pending.delete(url);
-          this.deleted.add(url);
-          this.proxyManager.recordSuccess(proxy);
-          return;
-        } else if (status === 'Failure') {
+          throwException(`文章(url: ${url} )下载失败`);
+        } else if (status === 'Error') {
           // 下载文章失败，需要重试
           console.warn(`获取阅读量时发现文章(url: ${url} )解析失败`);
           await updateDebugCache({
             fakeid: article.fakeid,
-            type: 'failure',
+            type: 'parse error',
             url: url,
             title: article.title,
             file: blob,
@@ -336,7 +375,7 @@ export class Downloader extends BaseDownload {
         const proxy = this.proxyManager.getBestProxy();
 
         try {
-          const response = await this.fetchComments(article.fakeid, cached.commentID!, buffer, proxy);
+          const response = await this.fetchComments(article.fakeid, cached.commentID!, buffer, proxy, article.appmsgid, article.itemidx);
           this.proxyManager.recordSuccess(proxy);
 
           if (response.base_resp.ret === 0) {
@@ -382,7 +421,9 @@ export class Downloader extends BaseDownload {
             cached.commentID!,
             comment.content_id,
             comment.reply_new.max_reply_id,
-            proxy
+            proxy,
+            article.appmsgid,
+            article.itemidx
           );
           this.proxyManager.recordSuccess(proxy);
 
@@ -420,7 +461,9 @@ export class Downloader extends BaseDownload {
     fakeid: string,
     commentID: string,
     buffer: string,
-    proxy: string
+    proxy: string,
+    appmsgid: number,
+    itemidx: number
   ): Promise<CommentResponse> {
     const abortController = new AbortController();
     this.abortControllers.set(commentID, abortController);
@@ -433,8 +476,15 @@ export class Downloader extends BaseDownload {
       }
 
       const Authorization = (preferences.value as Preferences).privateProxyAuthorization || '';
-      const url = `https://mp.weixin.qq.com/mp/appmsg_comment?action=getcomment&__biz=${targetCredential.biz}&comment_id=${commentID}&uin=${targetCredential.uin}&key=${targetCredential.key}&pass_ticket=${targetCredential.pass_ticket}&buffer=${buffer}&offset=1&limit=100&f=json`;
-      const proxyUrl = `${proxy}?url=${encodeURIComponent(url)}&authorization=${Authorization}`;
+      const url = `https://mp.weixin.qq.com/mp/appmsg_comment?action=getcomment&scene=0&appmsgid=${appmsgid}&idx=${itemidx}&__biz=${targetCredential.biz}&comment_id=${commentID}&uin=${targetCredential.uin}&key=${targetCredential.key}&pass_ticket=${encodeURIComponent(targetCredential.pass_ticket)}&appmsg_token=${encodeURIComponent(targetCredential.appmsg_token)}&wxtoken=777&devicetype=UnifiedPCMac&comment_scene=0&buffer=${buffer}&offset=0&limit=100&x5=0&f=json`;
+      const headers: Record<string, string> = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36 MicroMessenger/6.8.0(0x16080000) NetType/WIFI MiniProgramEnv/Mac MacWechat/WECHAT/WeChatBrowser XWEB/1191',
+        'Referer': 'https://mp.weixin.qq.com/',
+      };
+      if (targetCredential.cookie) {
+        headers.Cookie = targetCredential.cookie;
+      }
+      const proxyUrl = `${proxy}?url=${encodeURIComponent(url)}&headers=${encodeURIComponent(JSON.stringify(headers))}&authorization=${Authorization}`;
       const response = (await Promise.race([
         fetch(proxyUrl, {
           signal: abortController.signal,
@@ -459,7 +509,9 @@ export class Downloader extends BaseDownload {
     commentID: string,
     contentID: string,
     maxReplyID: number,
-    proxy: string
+    proxy: string,
+    appmsgid: number,
+    itemidx: number
   ): Promise<ReplyResponse> {
     const abortController = new AbortController();
     this.abortControllers.set(commentID + ':' + contentID, abortController);
@@ -472,8 +524,15 @@ export class Downloader extends BaseDownload {
       }
 
       const Authorization = (preferences.value as Preferences).privateProxyAuthorization || '';
-      const url = `https://mp.weixin.qq.com/mp/appmsg_comment?action=getcommentreply&__biz=${targetCredential.biz}&comment_id=${commentID}&uin=${targetCredential.uin}&key=${targetCredential.key}&pass_ticket=${targetCredential.pass_ticket}&content_id=${contentID}&max_reply_id=${maxReplyID}&limit=100&f=json`;
-      const proxyUrl = `${proxy}?url=${encodeURIComponent(url)}&authorization=${Authorization}`;
+      const url = `https://mp.weixin.qq.com/mp/appmsg_comment?action=getcommentreply&scene=0&appmsgid=${appmsgid}&idx=${itemidx}&__biz=${targetCredential.biz}&comment_id=${commentID}&uin=${targetCredential.uin}&key=${targetCredential.key}&pass_ticket=${encodeURIComponent(targetCredential.pass_ticket)}&appmsg_token=${encodeURIComponent(targetCredential.appmsg_token)}&wxtoken=777&devicetype=UnifiedPCMac&content_id=${contentID}&max_reply_id=${maxReplyID}&limit=100&x5=0&f=json`;
+      const headers: Record<string, string> = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36 MicroMessenger/6.8.0(0x16080000) NetType/WIFI MiniProgramEnv/Mac MacWechat/WECHAT/WeChatBrowser XWEB/1191',
+        'Referer': 'https://mp.weixin.qq.com/',
+      };
+      if (targetCredential.cookie) {
+        headers.Cookie = targetCredential.cookie;
+      }
+      const proxyUrl = `${proxy}?url=${encodeURIComponent(url)}&headers=${encodeURIComponent(JSON.stringify(headers))}&authorization=${Authorization}`;
       const response = (await Promise.race([
         fetch(proxyUrl, {
           signal: abortController.signal,
@@ -495,49 +554,33 @@ export class Downloader extends BaseDownload {
   // 提取 HTML 中的元数据(阅读、点赞、分享、喜欢、留言)，并写入缓存
   private async processHtmlMetadata(blob: Blob, url: string): Promise<void> {
     const html = await blob.text();
-    const parser = new DOMParser();
-    const document = parser.parseFromString(html, 'text/html');
 
-    // 阅读
+    // 提取对象字符串
+    const cgiData = await parseCgiDataNew(html);
+    if (!cgiData) {
+      console.error('提取 window.cgiData 对象失败');
+      return;
+    }
+
     let readNum = 0;
-    const readNumMatchResult = html.match(/var read_num = ['"](?<read_num>\d+)['"] \* 1;/);
-    const readNumNewMatchResult = html.match(/var read_num_new = ['"](?<read_num_new>\d+)['"] \* 1;/);
-    if (readNumNewMatchResult && readNumNewMatchResult.groups && readNumNewMatchResult.groups.read_num_new) {
-      readNum = parseInt(readNumNewMatchResult.groups.read_num_new, 10);
-    } else if (readNumMatchResult && readNumMatchResult.groups && readNumMatchResult.groups.read_num) {
-      readNum = parseInt(readNumMatchResult.groups.read_num, 10);
-    }
-
-    // 点赞
     let oldLikeNum = 0;
-    const oldLinkNumEl = document.querySelector('#js_bar_oldlike_btn');
-    if (oldLinkNumEl) {
-      oldLikeNum = Number(oldLinkNumEl.textContent);
-      oldLikeNum = Number.isNaN(oldLikeNum) ? 0 : oldLikeNum;
-    }
-
-    // 分享
     let shareNum = 0;
-    const shareNumEl = document.querySelector('#js_bar_share_btn');
-    if (shareNumEl) {
-      shareNum = Number(shareNumEl.textContent);
-      shareNum = Number.isNaN(shareNum) ? 0 : shareNum;
-    }
-
-    // 喜欢
     let likeNum = 0;
-    const likeNumEl = document.querySelector('#js_bar_like_btn');
-    if (likeNumEl) {
-      likeNum = Number(likeNumEl.textContent);
-      likeNum = Number.isNaN(likeNum) ? 0 : likeNum;
-    }
-
-    // 留言
     let commentNum = 0;
-    const commentNumEl = document.querySelector('#js_bar_comment_btn');
-    if (commentNumEl) {
-      commentNum = Number(commentNumEl.textContent);
-      commentNum = Number.isNaN(commentNum) ? 0 : commentNum;
+
+    try {
+      const barData = cgiData.user_info?.appmsg_bar_data
+        || cgiData.appmsg_bar_data
+        || cgiData.user_info;
+      if (barData) {
+        readNum = barData.read_num || 0; // 阅读量
+        oldLikeNum = barData.old_like_count || 0; // 点赞
+        shareNum = barData.share_count || 0; // 分享
+        likeNum = barData.like_count || 0; // 喜欢
+        commentNum = barData.comment_count || 0; // 留言
+      }
+    } catch (e) {
+      console.warn('解析元数据失败，使用默认值:', e);
     }
 
     const article = await getArticleByLink(url);

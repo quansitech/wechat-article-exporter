@@ -46,11 +46,11 @@
 </template>
 
 <script setup lang="ts">
-import { ACCOUNT_LIST_PAGE_SIZE, ACCOUNT_TYPE } from '~/config';
 import { Loader } from 'lucide-vue-next';
 import { getAccountList } from '~/apis';
-import type { AccountInfo } from '~/types/types';
 import LoginModal from '~/components/modal/Login.vue';
+import { ACCOUNT_LIST_PAGE_SIZE, ACCOUNT_TYPE } from '~/config';
+import type { AccountInfo } from '~/types/types';
 
 const toast = useToast();
 const modal = useModal();

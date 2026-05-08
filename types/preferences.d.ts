@@ -18,12 +18,16 @@ export interface Preferences {
   // 公众号同步频率(单位:秒)
   accountSyncSeconds: number;
 
-  syncDateRange: '1d' | '3d' | '7d' | '1m' | '3m' | '6m' | '1y' | 'all';
+  syncDateRange: '24h' | '1d' | '3d' | '7d' | '1m' | '3m' | '6m' | '1y' | 'all' | 'point';
+  syncDatePoint: number;
 }
 
 interface ExportConfig {
   // 目录名格式
   dirname: string;
+
+  // 目录最大长度
+  maxlength: number;
 
   // 导出json中是否包含文章内容
   exportJsonIncludeContent: boolean;
@@ -41,9 +45,7 @@ interface ExportConfig {
 interface DownloadConfig {
   // 抓取文章内容时，不检查缓存，强制下载最新内容
   forceDownloadContent: boolean;
-}
 
-interface APIAuth {
-  token: string;
-  nickname: string;
+  // 抓取阅读量时是否覆盖文章内容
+  metadataOverrideContent: boolean;
 }

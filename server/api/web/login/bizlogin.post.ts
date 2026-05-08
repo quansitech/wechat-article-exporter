@@ -1,7 +1,8 @@
-import { proxyMpRequest } from '~/server/utils/proxy-request';
-import { getCookiesFromRequest, getCookieFromResponse, exportAuthInfo } from '~/server/utils/CookieStore';
-import { autoSaveAuthInfo } from '~/server/utils/auth-file';
 import dayjs from 'dayjs';
+import { request } from '#shared/utils/request';
+import { getCookieFromResponse, getCookiesFromRequest, exportAuthInfo } from '~/server/utils/CookieStore';
+import { autoSaveAuthInfo } from '~/server/utils/auth-file';
+import { proxyMpRequest } from '~/server/utils/proxy-request';
 
 export default defineEventHandler(async event => {
   const cookie = getCookiesFromRequest(event);
@@ -39,7 +40,7 @@ export default defineEventHandler(async event => {
     };
   }
 
-  const { nick_name, head_img } = await $fetch(`/api/web/mp/info`, {
+  const { nick_name, head_img } = await request(`/api/web/mp/info`, {
     headers: {
       Cookie: `auth-key=${authKey}`,
     },
@@ -54,7 +55,7 @@ export default defineEventHandler(async event => {
   try {
     // 设置 auth-key 到请求头，以便 exportAuthInfo 可以获取认证信息
     event.node.req.headers['x-auth-key'] = authKey;
-    
+
     const authInfo = await exportAuthInfo(event);
     if (authInfo.token && authInfo.cookies) {
       const saved = autoSaveAuthInfo(authInfo.token, authInfo.cookies);

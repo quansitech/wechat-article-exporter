@@ -1,21 +1,28 @@
 <template>
   <div>
     <USlideover v-model="isOpen" :ui="{ width: 'max-w-[720px]' }">
-      <div class="article-preview h-screen overflow-y-scroll">
-        <HtmlRenderer :html="articleHtml" />
-      </div>
+      <HtmlRenderer :html="articleHtml" v-model:show="isOpen" />
     </USlideover>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { AppMsgEx } from '~/types/types';
+import { parseCgiDataNew } from '#shared/utils/html';
+import { renderHTMLFromCgiDataNew } from '#shared/utils/renderer';
 import HtmlRenderer from '~/components/preview/HtmlRenderer.vue';
-import { getHtmlCache, type HtmlAsset } from '~/store/v2/html';
-import type { Preferences } from '~/types/preferences';
+import toastFactory from '~/composables/toast';
 import usePreferences from '~/composables/usePreferences';
+import { getHtmlCache, type HtmlAsset } from '~/store/v2/html';
 import { getMetadataCache } from '~/store/v2/metadata';
+import type { Preferences } from '~/types/preferences';
+import type { AppMsgEx } from '~/types/types';
 import { renderComments } from '~/utils/comment';
+
+defineExpose({
+  open: open,
+});
+
+const toast = toastFactory();
 
 const isOpen = ref(false);
 const articleHtml = ref('');
@@ -25,20 +32,23 @@ async function open(article: AppMsgEx) {
   if (htmlAsset) {
     isOpen.value = true;
     const rawHtml = await htmlAsset.file.text();
-    articleHtml.value = await normalizeHtml(htmlAsset, rawHtml);
+    const cgiData = await parseCgiDataNew(rawHtml);
+    console.log(cgiData);
+
+    // articleHtml.value = await normalizeHtmlForPreview(htmlAsset, rawHtml);
+    articleHtml.value = await renderHTMLFromCgiDataNew(
+      cgiData,
+      (preferences.value as Preferences).exportConfig.exportHtmlIncludeComments
+    );
   } else {
-    console.warn('文章未缓存');
+    toast.warning('文章预览失败', `文章【${article.title}】还未拉取文章内容`);
   }
 }
-
-defineExpose({
-  open: open,
-});
 
 const preferences: Ref<Preferences> = usePreferences() as unknown as Ref<Preferences>;
 
 // 调整最终的 html
-async function normalizeHtml(cachedHtml: HtmlAsset, html: string): Promise<string> {
+async function normalizeHtmlForPreview(cachedHtml: HtmlAsset, html: string): Promise<string> {
   const parser = new DOMParser();
   const document = parser.parseFromString(html, 'text/html');
   const $jsArticleContent = document.querySelector('#js_article')!;
@@ -180,6 +190,60 @@ async function normalizeHtml(cachedHtml: HtmlAsset, html: string): Promise<strin
   let commentHTML = '';
   if ((preferences.value as Preferences).exportConfig.exportHtmlIncludeComments) {
     commentHTML = await renderComments(cachedHtml.url);
+  }
+
+  // 文本分享消息
+  const $js_text_desc = $jsArticleContent.querySelector('#js_text_desc') as HTMLElement | null;
+  if ($js_text_desc) {
+    // 文本分享页面的 body 额外样式
+    bodyCls += ' page_share_text';
+
+    // 顶部作者栏
+    const qmtplTextMatchResult = html.match(/(?<code>window\.__QMTPL_SSR_DATA__\s*=\s*\{.+?};)/s);
+    if (qmtplTextMatchResult && qmtplTextMatchResult.groups && qmtplTextMatchResult.groups.code) {
+      const code = qmtplTextMatchResult.groups.code;
+      // eslint-disable-next-line no-eval
+      eval(code);
+      const data = (window as any).__QMTPL_SSR_DATA__;
+      if (data && typeof data.title === 'string' && !$js_text_desc.innerHTML.trim()) {
+        let text = data.title as string;
+        text = text.replace(/\r/g, '').replace(/\n/g, '<br>');
+        $js_text_desc.innerHTML = text;
+      }
+      $jsArticleContent.querySelector('#js_top_profile')?.classList.remove('profile_area_hide');
+    }
+
+    // 正文内容
+    if (!$js_text_desc.innerHTML.trim()) {
+      const textContentMatch = html.match(
+        /var\s+TextContentNoEncode\s*=\s*window\.a_value_which_never_exists\s*\|\|\s*(?<value>'[^']*')/s
+      );
+      const contentMatch = html.match(
+        /var\s+ContentNoEncode\s*=\s*window\.a_value_which_never_exists\s*\|\|\s*(?<value>'[^']*')/s
+      );
+
+      let desc: string | null = null;
+      const assignFromMatch = (match: RegExpMatchArray | null, key: string) => {
+        if (match && match.groups && match.groups.value) {
+          const code = `window.${key} = ${match.groups.value}`;
+          // eslint-disable-next-line no-eval
+          eval(code);
+          // @ts-ignore
+          return (window as any)[key] as string;
+        }
+        return null;
+      };
+
+      desc = assignFromMatch(textContentMatch, '__WX_TEXT_NO_ENCODE__');
+      if (!desc) {
+        desc = assignFromMatch(contentMatch, '__WX_CONTENT_NO_ENCODE__');
+      }
+
+      if (desc) {
+        desc = desc.replace(/\r/g, '').replace(/\n/g, '<br>');
+        $js_text_desc.innerHTML = desc;
+      }
+    }
   }
 
   // 图片分享消息

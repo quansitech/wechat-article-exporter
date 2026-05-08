@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ITooltipParams } from 'ag-grid-community';
+
 interface Props {
   params: ITooltipParams;
 }

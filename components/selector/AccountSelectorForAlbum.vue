@@ -4,7 +4,7 @@
     size="md"
     color="gray"
     searchable
-    searchable-placeholder="搜索公众号名称..."
+    searchable-placeholder="筛选公众号..."
     clear-search-on-close
     :options="sortedAccountInfos"
     option-attribute="nickname"
@@ -22,16 +22,27 @@
         <p class="text-gray-500 text-sm">合集数: {{ account.albums.length }}</p>
       </div>
     </template>
+    <template #option-empty="{ query }">
+      未找到匹配「{{ query }}」的公众号<br />请先在「<NuxtLink
+        to="/dashboard/account"
+        class="text-blue-500 hover:underline"
+        >公众号管理</NuxtLink
+      >」中添加
+    </template>
+    <template #empty>
+      暂无公众号，请先在「<NuxtLink to="/dashboard/account" class="text-blue-500 hover:underline">公众号管理</NuxtLink
+      >」中添加
+    </template>
   </USelectMenu>
 </template>
 
 <script setup lang="ts">
-import { getAllInfo, type Info } from '~/store/v2/info';
-import type { AppMsgAlbumInfo } from '~/types/types';
-import { getArticleCache } from '~/store/v2/article';
 import { IMAGE_PROXY } from '~/config';
+import { getArticleCache } from '~/store/v2/article';
+import { getAllInfo, type MpAccount } from '~/store/v2/info';
+import type { AppMsgAlbumInfo } from '~/types/types';
 
-interface AccountInfo extends Info {
+interface AccountInfo extends MpAccount {
   albums?: AppMsgAlbumInfo[];
 }
 
@@ -53,7 +64,7 @@ const sortedAccountInfos = computed(() => {
 
 // 获取公众号下所有的合集数据（根据已缓存的文章数据）
 async function getAllAlbums(fakeid: string) {
-  const articles = await getArticleCache(fakeid, Date.now());
+  const articles = await getArticleCache(fakeid, Math.floor(Date.now() / 1000));
   const albums: AppMsgAlbumInfo[] = [];
   articles
     .flatMap(article => article.appmsg_album_infos)

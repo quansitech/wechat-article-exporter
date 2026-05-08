@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { IMAGE_PROXY } from '~/config';
-import StorageUsage from '~/components/StorageUsage.vue';
 import { formatDistance } from 'date-fns';
+import { request } from '#shared/utils/request';
 import LoginModal from '~/components/modal/Login.vue';
+import StorageUsage from '~/components/StorageUsage.vue';
+import { IMAGE_PROXY } from '~/config';
 import type { LogoutResponse } from '~/types/types';
 
 const loginAccount = useLoginAccount();
@@ -78,7 +79,7 @@ const logoutBtnLoading = ref(false);
 
 async function logout() {
   logoutBtnLoading.value = true;
-  const { statusCode, statusText } = await $fetch<LogoutResponse>('/api/web/mp/logout');
+  const { statusCode, statusText } = await request<LogoutResponse>('/api/web/mp/logout');
   if (statusCode === 200) {
     loginAccount.value = null;
   } else {
@@ -131,10 +132,10 @@ onUnmounted(() => {
         <span>登录信息过期时间还剩: </span>
         <span class="font-mono" :class="warning ? 'text-rose-500' : 'text-green-500'">{{ distance }}</span>
       </div>
-      <StorageUsage class="" />
     </div>
     <div v-else>
       <UButton color="gray" variant="solid" @click="login">登录公众号</UButton>
     </div>
+    <StorageUsage />
   </footer>
 </template>

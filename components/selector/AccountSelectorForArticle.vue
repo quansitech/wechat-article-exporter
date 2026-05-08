@@ -4,7 +4,7 @@
     size="md"
     color="gray"
     searchable
-    searchable-placeholder="搜索公众号名称..."
+    searchable-placeholder="筛选公众号..."
     clear-search-on-close
     :options="sortedAccountInfos"
     option-attribute="nickname"
@@ -22,11 +22,22 @@
         <p class="text-gray-500 text-sm">已加载文章数: {{ account.articles }}</p>
       </div>
     </template>
+    <template #option-empty="{ query }">
+      未找到匹配「{{ query }}」的公众号<br />请先在「<NuxtLink
+        to="/dashboard/account"
+        class="text-blue-500 hover:underline"
+        >公众号管理</NuxtLink
+      >」中添加
+    </template>
+    <template #empty>
+      暂无公众号，请先在「<NuxtLink to="/dashboard/account" class="text-blue-500 hover:underline">公众号管理</NuxtLink
+      >」中添加
+    </template>
   </USelectMenu>
 </template>
 
 <script setup lang="ts">
-import { getAllInfo, type Info } from '~/store/v2/info';
+import { getAllInfo, type MpAccount } from '~/store/v2/info';
 
 // 已缓存的公众号信息
 const cachedAccountInfos = await getAllInfo();
@@ -37,5 +48,5 @@ const sortedAccountInfos = computed(() => {
   return cachedAccountInfos;
 });
 
-const selected = defineModel<Info | undefined>();
+const selected = defineModel<MpAccount | undefined>();
 </script>

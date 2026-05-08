@@ -5,16 +5,16 @@
 import { proxyMpRequest } from '~/server/utils/proxy-request';
 
 interface AuthorInfoQuery {
-  biz: string;
+  fakeid: string;
 }
 
 export default defineEventHandler(async event => {
-  const { biz } = getQuery<AuthorInfoQuery>(event);
+  const { fakeid } = getQuery<AuthorInfoQuery>(event);
 
   const params: Record<string, string | number> = {
     wxtoken: '777',
-    biz: biz,
-    __biz: biz,
+    biz: fakeid,
+    __biz: fakeid,
     x5: 0,
     f: 'json',
   };

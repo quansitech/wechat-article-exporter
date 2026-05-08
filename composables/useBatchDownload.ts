@@ -1,8 +1,8 @@
-import JSZip from 'jszip';
-import { saveAs } from 'file-saver';
 import { format } from 'date-fns';
-import { downloadArticleHTMLs, packHTMLAssets } from '~/utils';
+import { saveAs } from 'file-saver';
+import JSZip from 'jszip';
 import type { DownloadableArticle } from '~/types/types';
+import { downloadArticleHTMLs, packHTMLAssets } from '~/utils';
 
 /**
  * 批量下载合集文章

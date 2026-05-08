@@ -1,11 +1,14 @@
-export interface DailyRatio {
-  date: string;
-  ratio: string;
-  label: string;
+interface Base {
+  name: string;
+  domain: string;
 }
 
-export interface ResultProxyStatus {
-  name: string;
-  currentStatus: string;
-  dailyRatios: DailyRatio[];
+interface Metric {
+  dailyRequests: number;
+  dailyCpuTimeUs: number;
+  monthlyRequests: number;
+  monthlyCpuUs: number;
+}
+export interface AccountMetric extends Base {
+  metric: Metric | null;
 }

@@ -1,45 +1,13 @@
-import dayjs from 'dayjs';
 import JSZip from 'jszip';
 import mime from 'mime';
+import { formatTimeStamp, sleep } from '#shared/utils/helpers';
+import { request } from '#shared/utils/request';
+import { getComment } from '~/apis';
 import { getAssetCache, updateAssetCache } from '~/store/v2/assets';
-import * as pool from '~/utils/pool';
 import type { DownloadableArticle } from '~/types/types';
 import type { AudioResource, VideoPageInfo } from '~/types/video';
-import { getComment } from '~/apis';
-
-export function formatTimeStamp(timestamp: number) {
-  return dayjs.unix(timestamp).format('YYYY-MM-DD HH:mm:ss');
-}
-
-export const ITEM_SHOW_TYPE: Record<number, string> = {
-  0: '普通图文',
-  5: '视频分享',
-  6: '音乐分享',
-  7: '音频分享',
-  8: '图片分享',
-  10: '文本分享',
-  11: '文章分享',
-  17: '短文',
-};
-
-export function formatItemShowType(type: number) {
-  return ITEM_SHOW_TYPE[type] || '未识别';
-}
-
-// 工具函数：将时长字符串转为秒数
-export function durationToSeconds(duration: string | undefined) {
-  if (!duration) return 0;
-  const [min, sec] = duration.split(':').map(Number);
-  return min * 60 + sec;
-}
-
-export function formatNumber(num: any): string {
-  if (typeof num === 'number') {
-    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  } else {
-    return num.toString();
-  }
-}
+import * as pool from '~/utils/pool';
+import { extractCommentId } from './comment';
 
 /**
  * 使用代理下载资源
@@ -48,7 +16,7 @@ export function formatNumber(num: any): string {
  * @param withCredential
  * @param timeout 超时时间(单位: 秒)，默认 30
  */
-export async function downloadAssetWithProxy<T extends Blob | string>(
+async function downloadAssetWithProxy<T extends Blob | string>(
   url: string,
   proxy: string | undefined,
   withCredential = false,
@@ -66,8 +34,7 @@ export async function downloadAssetWithProxy<T extends Blob | string>(
     : url;
   targetURL = targetURL.replace(/^http:\/\//, 'https://');
 
-  return await $fetch<T>(targetURL, {
-    retry: 0,
+  return await request<T>(targetURL, {
     timeout: timeout * 1000,
     referrerPolicy: 'unsafe-url',
   });
@@ -78,7 +45,7 @@ export async function downloadAssetWithProxy<T extends Blob | string>(
  * @param articleURL
  * @param title
  */
-export async function downloadArticleHTML(articleURL: string, title?: string) {
+async function downloadArticleHTML(articleURL: string, title?: string) {
   let html = '';
   const parser = new DOMParser();
 
@@ -223,6 +190,7 @@ export async function packHTMLAssets(fakeid: string, html: string, title: string
   const ipWordingMatchResult = html.match(/window\.ip_wording = (?<data>{\s+countryName: '[^']+',[^}]+})/s);
   if (ipWrp && ipWording && ipWordingMatchResult && ipWordingMatchResult.groups && ipWordingMatchResult.groups.data) {
     const json = ipWordingMatchResult.groups.data;
+    // eslint-disable-next-line no-eval
     eval('window.ip_wording = ' + json);
     const ipWordingDisplay = getIpWoridng((window as any).ip_wording);
     if (ipWordingDisplay !== '') {
@@ -246,6 +214,60 @@ export async function packHTMLAssets(fakeid: string, html: string, title: string
   const titleModifiedMatchResult = html.match(/window\.isTitleModified = "(?<data>\d*)" \* 1;/);
   if (titleModifiedMatchResult && titleModifiedMatchResult.groups && titleModifiedMatchResult.groups.data) {
     __setTitleModify(titleModifiedMatchResult.groups.data === '1');
+  }
+
+  // 文本分享消息
+  const $js_text_desc = $jsArticleContent.querySelector('#js_text_desc') as HTMLElement | null;
+  if ($js_text_desc) {
+    // 文本分享样式
+    bodyCls += ' page_share_text';
+
+    // 顶部作者栏
+    const qmtplTextMatchResult = html.match(/(?<code>window\.__QMTPL_SSR_DATA__\s*=\s*\{.+?};)/s);
+    if (qmtplTextMatchResult && qmtplTextMatchResult.groups && qmtplTextMatchResult.groups.code) {
+      const code = qmtplTextMatchResult.groups.code;
+      // eslint-disable-next-line no-eval
+      eval(code);
+      const data = (window as any).__QMTPL_SSR_DATA__;
+      if (data && typeof data.title === 'string' && !$js_text_desc.innerHTML.trim()) {
+        let text = data.title as string;
+        text = text.replace(/\r/g, '').replace(/\n/g, '<br>');
+        $js_text_desc.innerHTML = text;
+      }
+      $jsArticleContent.querySelector('#js_top_profile')?.classList.remove('profile_area_hide');
+    }
+
+    // 正文内容
+    if (!$js_text_desc.innerHTML.trim()) {
+      const textContentMatch = html.match(
+        /var\s+TextContentNoEncode\s*=\s*window\.a_value_which_never_exists\s*\|\|\s*(?<value>'[^']*')/s
+      );
+      const contentMatch = html.match(
+        /var\s+ContentNoEncode\s*=\s*window\.a_value_which_never_exists\s*\|\|\s*(?<value>'[^']*')/s
+      );
+
+      let desc: string | null = null;
+      const assignFromMatch = (match: RegExpMatchArray | null, key: string) => {
+        if (match && match.groups && match.groups.value) {
+          const code = `window.${key} = ${match.groups.value}`;
+          // eslint-disable-next-line no-eval
+          eval(code);
+          // @ts-ignore
+          return (window as any)[key] as string;
+        }
+        return null;
+      };
+
+      desc = assignFromMatch(textContentMatch, '__WX_TEXT_NO_ENCODE__');
+      if (!desc) {
+        desc = assignFromMatch(contentMatch, '__WX_CONTENT_NO_ENCODE__');
+      }
+
+      if (desc) {
+        desc = desc.replace(/\r/g, '').replace(/\n/g, '<br>');
+        $js_text_desc.innerHTML = desc;
+      }
+    }
   }
 
   // 文章引用
@@ -293,9 +315,8 @@ export async function packHTMLAssets(fakeid: string, html: string, title: string
 
   // 下载留言数据
   let commentHTML = '';
-  const commentIdMatchResult = html.match(/var comment_id = '(?<comment_id>\d+)' \|\| '0';/);
-  if (commentIdMatchResult && commentIdMatchResult.groups && commentIdMatchResult.groups.comment_id) {
-    const comment_id = commentIdMatchResult.groups.comment_id;
+  const comment_id = extractCommentId(html);
+  if (comment_id) {
     const commentResponse = await getComment(comment_id);
     // 抓到了留言数据
     if (commentResponse) {
@@ -703,7 +724,7 @@ export async function packHTMLAssets(fakeid: string, html: string, title: string
     if (cachedAsset) {
       stylesheetFile = cachedAsset.file;
     } else {
-      const stylesheet = await $fetch<string>(url, { retryDelay: 2000 });
+      const stylesheet = await request<string>(url, { retry: 1, retryDelay: 2000 });
       stylesheetFile = new Blob([stylesheet], { type: 'text/css' });
       await updateAssetCache({ url: url, file: stylesheetFile, fakeid: fakeid });
     }
@@ -822,7 +843,7 @@ export async function packHTMLAssets(fakeid: string, html: string, title: string
     if (mpCommonMpAudioJsCache) {
       scriptFile = mpCommonMpAudioJsCache.file;
     } else {
-      scriptFile = await $fetch<Blob>(url, { retryDelay: 500 });
+      scriptFile = await request<Blob>(url, { retry: 1, retryDelay: 500 });
       await updateAssetCache({ url: url, file: scriptFile, fakeid: fakeid });
     }
     zip.file(`assets/mp-common-mpaudio.js`, scriptFile);
@@ -875,57 +896,30 @@ export function gotoLink(url: string) {
   window.open(url);
 }
 
-export function formatElapsedTime(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-
-  let result = '';
-  if (hours > 0) {
-    result += `${hours}小时`;
-  }
-  if (minutes > 0) {
-    result += `${minutes}分`;
-  }
-  if (secs > 0 || result === '') {
-    result += `${secs}秒`;
-  }
-  return result;
-}
-
-export function maxLen(text: string, max = 35): string {
-  if (text.length > max) {
-    return text.slice(0, max) + '...';
-  }
-  return text;
-}
-
-export function uniqueStrings(arr: string[]): string[] {
-  return [...new Set(arr)];
-}
-
-export function sleep(ms: number = 1000): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-export function timeout(ms: number = 1000): Promise<never> {
-  return new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('Request timeout')), ms);
-  });
-}
-
-export function throwException(message: string) {
-  throw new Error(message);
-}
-
 // 计算最佳并发量
 export function bestConcurrencyCount(proxyCount: number): number {
   return proxyCount > 5 ? proxyCount - 3 : Math.max(proxyCount - 2, 1);
 }
 
-// 过滤文件名中的非法字符
-export function filterInvalidFilenameChars(input: string): string {
-  // 只保留中文字符、英文字符、数字
-  const regex = /[^\u4e00-\u9fa5a-zA-Z0-9()（）]/g;
-  return input.replace(regex, '_').slice(0, 100).trim();
+// 检测用户浏览器是否为 Chrome
+export function isChromeBrowser() {
+  const userAgent = navigator.userAgent.toLowerCase();
+
+  if (userAgent.includes('micromessenger')) {
+    // 微信内置浏览器
+    return false;
+  }
+
+  if (!userAgent.includes('chrome')) {
+    // 非 Chromium 内核
+    return false;
+  }
+
+  if (typeof (navigator as any).brave === 'object') {
+    // Brave 浏览器
+    return false;
+  }
+
+  // catch-all
+  return true;
 }

@@ -1,6 +1,6 @@
-import type { PublishInfo, PublishPage, AppMsgExWithFakeID } from '~/types/types';
+import type { AppMsgExWithFakeID, PublishInfo, PublishPage } from '~/types/types';
 import { db } from './db';
-import { type Info, updateInfoCache } from './info';
+import { type MpAccount, updateInfoCache } from './info';
 
 export type ArticleAsset = AppMsgExWithFakeID;
 
@@ -9,8 +9,8 @@ export type ArticleAsset = AppMsgExWithFakeID;
  * @param account
  * @param publish_page
  */
-export async function updateArticleCache(account: Info, publish_page: PublishPage) {
-  db.transaction('rw', ['article', 'info'], async () => {
+export async function updateArticleCache(account: MpAccount, publish_page: PublishPage) {
+  await db.transaction('rw', ['article', 'info'], async () => {
     const keys = await db.article.toCollection().keys();
 
     const fakeid = account.fakeid;
@@ -26,7 +26,7 @@ export async function updateArticleCache(account: Info, publish_page: PublishPag
       let newEntryCount = 0;
 
       for (const article of publish_info.appmsgex) {
-        const key = await db.article.put({ ...article, fakeid }, `${fakeid}:${article.aid}`);
+        const key = await db.article.put({ ...article, fakeid, _status: '' }, `${fakeid}:${article.aid}`);
         if (!keys.includes(key)) {
           newEntryCount++;
           articleCount++;
@@ -91,17 +91,68 @@ export async function getArticleByLink(url: string): Promise<AppMsgExWithFakeID>
   return article;
 }
 
+// 根据 url 获取 SINGLE_ARTICLE_FAKEID 文章对象
+export async function getSingleArticleByLink(url: string): Promise<AppMsgExWithFakeID> {
+  const article = await db.article
+    .where('link')
+    .equals(url)
+    .and(article => article.fakeid === 'SINGLE_ARTICLE_FAKEID')
+    .first();
+  if (!article) {
+    throw new Error(`Article(${url}) does not exist`);
+  }
+
+  return article;
+}
+
 /**
  * 文章被删除
  * @param url
+ * @param is_deleted
  */
-export async function articleDeleted(url: string): Promise<void> {
-  db.transaction('rw', 'article', async () => {
-    db.article
+export async function articleDeleted(url: string, is_deleted = true): Promise<void> {
+  await db.transaction('rw', 'article', async () => {
+    await db.article
       .where('link')
       .equals(url)
       .modify(article => {
-        article.is_deleted = true;
+        article.is_deleted = is_deleted;
+      });
+  });
+}
+
+/**
+ * 更新文章状态
+ * @param url
+ * @param status
+ */
+export async function updateArticleStatus(url: string, status: string): Promise<void> {
+  await db.transaction('rw', 'article', async () => {
+    await db.article
+      .where('link')
+      .equals(url)
+      .modify(article => {
+        article._status = status;
+      });
+  });
+}
+
+/**
+ * 更新文章的fakeid
+ * @param url
+ * @param fakeid
+ */
+export async function updateArticleFakeid(url: string, fakeid: string): Promise<void> {
+  await db.transaction('rw', 'article', async () => {
+    await db.article
+      .where('link')
+      .equals(url)
+      .and(article => article.fakeid === 'SINGLE_ARTICLE_FAKEID')
+      .modify(article => {
+        article.fakeid = fakeid;
+
+        // 标记改数据是【单篇文章下载】添加的
+        article._single = true;
       });
   });
 }

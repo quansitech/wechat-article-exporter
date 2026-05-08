@@ -15,6 +15,9 @@
 
               <template #panel>
                 <div class="p-4">
+                  <p class="my-2 text-sm text-gray-500">
+                    使用 <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded font-mono text-xs">${变量名}</code> 的格式插入变量，例如：<code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded font-mono text-xs">${YYYY}-${MM}-${DD}_${title}</code>
+                  </p>
                   <p class="my-2 font-medium">支持的变量：</p>
                   <table class="w-full border-collapse border">
                     <tbody>
@@ -24,29 +27,11 @@
                         <th class="w-20">变量</th>
                         <th class="w-32">含义</th>
                       </tr>
-                      <tr>
-                        <td class="text-center">title</td>
-                        <td class="text-center">文章标题</td>
-                        <td class="text-center">account</td>
-                        <td class="text-center">公众号名称</td>
-                      </tr>
-                      <tr>
-                        <td class="text-center">YYYY</td>
-                        <td class="text-center">年</td>
-                        <td class="text-center">MM</td>
-                        <td class="text-center">月</td>
-                      </tr>
-                      <tr>
-                        <td class="text-center">DD</td>
-                        <td class="text-center">日</td>
-                        <td class="text-center">HH</td>
-                        <td class="text-center">时</td>
-                      </tr>
-                      <tr>
-                        <td class="text-center">mm</td>
-                        <td class="text-center">分</td>
-                        <td class="text-center"></td>
-                        <td class="text-center"></td>
+                      <tr v-for="(item, idx) in variables" :key="idx">
+                        <td class="text-center">{{ item[0].name }}</td>
+                        <td class="text-center">{{ item[0].description }}</td>
+                        <td class="text-center">{{ item[1].name }}</td>
+                        <td class="text-center">{{ item[1].description }}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -62,6 +47,23 @@
           name="dirname"
           v-model="preferences.exportConfig.dirname"
         />
+        <p class="mt-2 text-sm text-gray-500">
+          <span class="mr-1">预览:</span>
+          <span class="font-mono text-gray-700 dark:text-gray-300">{{ dirnamePreview }}</span>
+        </p>
+      </div>
+      <div>
+        <p class="mb-2 flex items-center gap-3">
+          <span>目录名最大长度:</span>
+          <span class="text-xs text-gray-500">(0表示不限制)</span>
+          <UInput
+            class=""
+            placeholder="目录名最大长度"
+            v-model="preferences.exportConfig.maxlength"
+            type="number"
+            min="0"
+          />
+        </p>
       </div>
       <div>
         <UCheckbox
@@ -97,6 +99,46 @@
 import type { Preferences } from '~/types/preferences';
 
 const preferences: Ref<Preferences> = usePreferences() as unknown as Ref<Preferences>;
+
+const sampleData: Record<string, string> = {
+  account: '人民日报',
+  title: '这是一篇示例文章标题',
+  aid: '100000001',
+  author: '张三',
+  YYYY: '2025',
+  MM: '03',
+  DD: '15',
+  HH: '10',
+  mm: '30',
+};
+
+const dirnamePreview = computed(() => {
+  let result = preferences.value.exportConfig.dirname || '';
+  for (const [key, value] of Object.entries(sampleData)) {
+    result = result.replace(new RegExp(`\\$\\{${key}}`, 'g'), value);
+  }
+  const maxlength = preferences.value.exportConfig.maxlength;
+  if (maxlength) {
+    result = result.slice(0, maxlength);
+  }
+  return result || '（空）';
+});
+
+const _variables = [
+  { name: 'account', description: '公众号名称' },
+  { name: 'title', description: '文章标题' },
+  { name: 'aid', description: '文章id' },
+  { name: 'author', description: '作者' },
+  { name: 'YYYY', description: '年' },
+  { name: 'MM', description: '月' },
+  { name: 'DD', description: '日' },
+  { name: 'HH', description: '时' },
+  { name: 'mm', description: '分' },
+];
+const variables = Array.from({ length: Math.ceil(_variables.length / 2) }, (_, i) => [
+  _variables[i * 2] ?? {},
+  _variables[i * 2 + 1] ?? {},
+]);
 </script>
 
 <style scoped>

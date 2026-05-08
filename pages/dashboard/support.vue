@@ -46,8 +46,8 @@
 </template>
 
 <script setup lang="ts">
-import { websiteName } from '~/config';
 import ExternalLink from '~/components/base/ExternalLink.vue';
+import { websiteName } from '~/config';
 
 useHead({
   title: `技术支持 & 赞助 | ${websiteName}`,

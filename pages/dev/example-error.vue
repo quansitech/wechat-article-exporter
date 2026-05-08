@@ -1,5 +1,7 @@
 <script setup>
 import * as Sentry from '@sentry/nuxt';
+import { request } from '#shared/utils/request.ts';
+
 function triggerClientError() {
   throw new Error('Nuxt Button Error');
 }
@@ -10,7 +12,7 @@ function getSentryData() {
       op: 'test',
     },
     async () => {
-      await $fetch('/api/sentry-example');
+      await request('/api/sentry-example');
     }
   );
 }

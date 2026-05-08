@@ -1,10 +1,10 @@
-import { sleep } from '@antfu/utils';
 import dayjs from 'dayjs';
-import { PUBLIC_PROXY_LIST } from '~/config';
+import PQueue from 'p-queue';
+import { v4 as uuid } from 'uuid';
+import { sleep } from '#shared/utils/helpers';
+import { PUBLIC_PROXY_LIST } from '~/config/public-proxy';
 import type { DownloadableArticle } from '~/types/types';
 import type { AudioResource, VideoResource } from '~/types/video';
-import { v4 as uuid } from 'uuid';
-import PQueue from 'p-queue';
 
 /**
  * 代理实例

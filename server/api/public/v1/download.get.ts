@@ -1,6 +1,7 @@
 import TurndownService from 'turndown';
+import { urlIsValidMpArticle } from '#shared/utils';
+import { normalizeHtml, parseCgiDataNew } from '#shared/utils/html';
 import { USER_AGENT } from '~/config';
-import { urlIsValidMpArticle, normalizeHtml } from '~/server/utils';
 
 interface SearchBizQuery {
   url: string;
@@ -29,7 +30,7 @@ export default defineEventHandler(async event => {
   }
 
   const format: string = (query.format || 'html').toLowerCase();
-  if (!['html', 'markdown', 'text'].includes(format)) {
+  if (!['html', 'markdown', 'text', 'json'].includes(format)) {
     return {
       base_resp: {
         ret: -1,
@@ -48,12 +49,28 @@ export default defineEventHandler(async event => {
 
   switch (format) {
     case 'html':
-      return normalizeHtml(rawHtml, 'html');
+      return new Response(normalizeHtml(rawHtml, 'html'), {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=UTF-8',
+        },
+      });
     case 'text':
-      return normalizeHtml(rawHtml, 'text');
+      return new Response(normalizeHtml(rawHtml, 'text'), {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/plain; charset=UTF-8',
+        },
+      });
     case 'markdown':
-      const turndownService = new TurndownService();
-      return turndownService.turndown(normalizeHtml(rawHtml, 'html'));
+      return new Response(new TurndownService().turndown(normalizeHtml(rawHtml, 'html')), {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/markdown; charset=UTF-8',
+        },
+      });
+    case 'json':
+      return await parseCgiDataNew(rawHtml);
     default:
       throw new Error(`Unknown format ${format}`);
   }

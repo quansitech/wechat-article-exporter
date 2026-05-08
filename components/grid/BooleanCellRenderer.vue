@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ICellRendererParams } from 'ag-grid-community';
-import { SquareCheckBig, Square } from 'lucide-vue-next';
+import { Square, SquareCheckBig } from 'lucide-vue-next';
 
 interface Props {
   params: ICellRendererParams;

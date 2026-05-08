@@ -1,5 +1,5 @@
-import { getAuthKeyFromRequest } from '~/server/utils/proxy-request';
 import { getMpCookie } from '~/server/kv/cookie';
+import { getAuthKeyFromRequest } from '~/server/utils/proxy-request';
 
 export default defineEventHandler(async event => {
   const authKey = getAuthKeyFromRequest(event);

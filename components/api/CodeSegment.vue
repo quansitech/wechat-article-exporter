@@ -3,7 +3,7 @@ import hljs from 'highlight.js/lib/core';
 import json from 'highlight.js/lib/languages/json';
 import xml from 'highlight.js/lib/languages/xml';
 import 'highlight.js/styles/stackoverflow-dark.css';
-import { Copy, Check } from 'lucide-vue-next';
+import { Check, Copy } from 'lucide-vue-next';
 
 hljs.registerLanguage('json', json);
 hljs.registerLanguage('xml', xml);

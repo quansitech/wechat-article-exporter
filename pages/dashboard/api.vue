@@ -11,7 +11,8 @@
 </template>
 
 <script setup lang="ts">
-import { apis, websiteName } from '~/config';
+import { websiteName } from '~/config';
+import { apis } from '~/config/public-apis';
 
 useHead({
   title: `API | ${websiteName}`,

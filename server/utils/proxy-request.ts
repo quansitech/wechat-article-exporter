@@ -1,10 +1,10 @@
-import { v4 as uuidv4 } from 'uuid';
-import { cookieStore, getCookieFromStore } from '~/server/utils/CookieStore';
-import { RequestOptions } from '~/server/types';
-import { logRequest, logResponse } from '~/server/utils/logger';
-import { isDev, USER_AGENT } from '~/config';
 import dayjs from 'dayjs';
 import { H3Event, parseCookies } from 'h3';
+import { v4 as uuidv4 } from 'uuid';
+import { isDev, USER_AGENT } from '~/config';
+import { RequestOptions } from '~/server/types';
+import { cookieStore, getCookieFromStore } from '~/server/utils/CookieStore';
+import { logRequest, logResponse } from '~/server/utils/logger';
 
 /**
  * 代理微信公众号请求
@@ -18,6 +18,7 @@ export async function proxyMpRequest(options: RequestOptions) {
     Referer: 'https://mp.weixin.qq.com/',
     Origin: 'https://mp.weixin.qq.com',
     'User-Agent': USER_AGENT,
+    'Accept-Encoding': 'identity', // 禁用压缩，避免出现response.clone() bug
   });
 
   // 优先读取参数中的 cookie，若无则从 CookieStore 中读取
@@ -45,7 +46,7 @@ export async function proxyMpRequest(options: RequestOptions) {
 
   // 记录请求报文
   const requestId = uuidv4().replace(/-/g, '');
-  if (runtimeConfig.debugMpRequest && isDev) {
+  if (process.env.NUXT_DEBUG_MP_REQUEST && isDev) {
     await logRequest(requestId, request.clone());
   }
 
@@ -53,7 +54,7 @@ export async function proxyMpRequest(options: RequestOptions) {
   const mpResponse = await fetch(request);
 
   // 记录响应报文
-  if (runtimeConfig.debugMpRequest && isDev) {
+  if (process.env.NUXT_DEBUG_MP_REQUEST && isDev) {
     await logResponse(requestId, mpResponse.clone());
   }
 
@@ -73,15 +74,23 @@ export async function proxyMpRequest(options: RequestOptions) {
     try {
       const authKey = crypto.randomUUID().replace(/-/g, '');
 
-      const { redirect_url } = await mpResponse.clone().json();
-      const token = new URL(`http://localhost${redirect_url}`).searchParams.get('token')!;
+      const body = await mpResponse.clone().json();
+      const redirectUrl = body?.redirect_url;
+      if (!redirectUrl || typeof redirectUrl !== 'string') {
+        throw new Error(`登录响应中未找到 redirect_url，响应内容: ${JSON.stringify(body)}`);
+      }
+
+      const token = new URL(`http://localhost${redirectUrl}`).searchParams.get('token');
+      if (!token) {
+        throw new Error(`redirect_url 中未找到 token 参数: ${redirectUrl}`);
+      }
+
       console.log('token', token);
       const success = await cookieStore.setCookie(authKey, token, mpResponse.headers.getSetCookie());
-      if (success) {
-        console.log('cookie 写入成功');
-      } else {
-        console.log('cookie 写入失败');
+      if (!success) {
+        throw new Error('cookie 写入 KV 存储失败');
       }
+      console.log('cookie 写入成功');
 
       setCookies = [
         `auth-key=${authKey}; Path=/; Expires=${dayjs().add(4, 'days').toString()}; Secure; HttpOnly`,
@@ -91,6 +100,12 @@ export async function proxyMpRequest(options: RequestOptions) {
       ];
     } catch (error) {
       console.error('action(login) failed:', error);
+
+      // 登录失败时返回错误响应，而不是静默继续
+      return new Response(JSON.stringify({ base_resp: { ret: -1, err_msg: `登录处理失败: ${error}` } }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
   }
 

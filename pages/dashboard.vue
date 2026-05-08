@@ -21,6 +21,6 @@
 </template>
 
 <script setup lang="ts">
-import SideBar from '~/components/dashboard/SideBar.vue';
 import GlobalActions from '~/components/dashboard/Actions.vue';
+import SideBar from '~/components/dashboard/SideBar.vue';
 </script>

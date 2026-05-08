@@ -1,6 +1,6 @@
 import { db } from './db';
 
-export interface Info {
+export interface MpAccount {
   fakeid: string;
   completed: boolean;
   count: number;
@@ -21,31 +21,31 @@ export interface Info {
 }
 
 /**
- * 更新 info 缓存
- * @param info
+ * 更新 account 缓存
+ * @param mpAccount
  */
-export async function updateInfoCache(info: Info): Promise<boolean> {
+export async function updateInfoCache(mpAccount: MpAccount): Promise<boolean> {
   return db.transaction('rw', 'info', async () => {
-    let infoCache = await db.info.get(info.fakeid);
+    let infoCache = await db.info.get(mpAccount.fakeid);
     if (infoCache) {
-      if (info.completed) {
-        infoCache.completed = info.completed;
+      if (mpAccount.completed) {
+        infoCache.completed = mpAccount.completed;
       }
-      infoCache.count += info.count;
-      infoCache.articles += info.articles;
-      infoCache.nickname = info.nickname;
-      infoCache.round_head_img = info.round_head_img;
-      infoCache.total_count = info.total_count;
+      infoCache.count += mpAccount.count;
+      infoCache.articles += mpAccount.articles;
+      infoCache.nickname = mpAccount.nickname;
+      infoCache.round_head_img = mpAccount.round_head_img;
+      infoCache.total_count = mpAccount.total_count;
       infoCache.update_time = Math.round(Date.now() / 1000);
     } else {
       infoCache = {
-        fakeid: info.fakeid,
-        completed: info.completed,
-        count: info.count,
-        articles: info.articles,
-        nickname: info.nickname,
-        round_head_img: info.round_head_img,
-        total_count: info.total_count,
+        fakeid: mpAccount.fakeid,
+        completed: mpAccount.completed,
+        count: mpAccount.count,
+        articles: mpAccount.articles,
+        nickname: mpAccount.nickname,
+        round_head_img: mpAccount.round_head_img,
+        total_count: mpAccount.total_count,
         create_time: Math.round(Date.now() / 1000),
         update_time: Math.round(Date.now() / 1000),
       };
@@ -70,11 +70,11 @@ export async function updateLastUpdateTime(fakeid: string): Promise<boolean> {
  * 获取 info 缓存
  * @param fakeid
  */
-export async function getInfoCache(fakeid: string): Promise<Info | undefined> {
+export async function getInfoCache(fakeid: string): Promise<MpAccount | undefined> {
   return db.info.get(fakeid);
 }
 
-export async function getAllInfo(): Promise<Info[]> {
+export async function getAllInfo(): Promise<MpAccount[]> {
   return db.info.toArray();
 }
 
@@ -89,16 +89,16 @@ export async function getAccountNameByFakeid(fakeid: string): Promise<string | n
 }
 
 // 批量导入公众号
-export async function importInfos(infos: Info[]): Promise<void> {
-  for (const info of infos) {
+export async function importMpAccounts(mpAccounts: MpAccount[]): Promise<void> {
+  for (const mpAccount of mpAccounts) {
     // 导入时需要把相关数量置空
-    info.completed = false;
-    info.count = 0;
-    info.articles = 0;
-    info.total_count = 0;
-    info.create_time = undefined;
-    info.update_time = undefined;
-    info.last_update_time = undefined;
-    await updateInfoCache(info);
+    mpAccount.completed = false;
+    mpAccount.count = 0;
+    mpAccount.articles = 0;
+    mpAccount.total_count = 0;
+    mpAccount.create_time = undefined;
+    mpAccount.update_time = undefined;
+    mpAccount.last_update_time = undefined;
+    await updateInfoCache(mpAccount);
   }
 }

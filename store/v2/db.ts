@@ -1,25 +1,23 @@
 import Dexie, { type EntityTable, type Table } from 'dexie';
-import type { APICall } from './api';
+import type { ArticleAsset } from './article';
 import type { Asset } from './assets';
 import type { CommentAsset } from './comment';
 import type { CommentReplyAsset } from './comment_reply';
 import type { DebugAsset } from './debug';
 import type { HtmlAsset } from './html';
-import type { Info } from './info';
+import type { MpAccount } from './info';
 import type { Metadata } from './metadata';
 import type { ResourceAsset } from './resource';
 import type { ResourceMapAsset } from './resource-map';
-import type { ArticleAsset } from './article';
 
 const db = new Dexie('exporter.wxdown.online') as Dexie & {
-  api: EntityTable<APICall>;
   article: Table<ArticleAsset, string>;
   asset: EntityTable<Asset, 'url'>;
   comment: EntityTable<CommentAsset, 'url'>;
   comment_reply: Table<CommentReplyAsset, string>;
   debug: EntityTable<DebugAsset, 'url'>;
   html: EntityTable<HtmlAsset, 'url'>;
-  info: EntityTable<Info, 'fakeid'>;
+  info: EntityTable<MpAccount, 'fakeid'>;
   metadata: EntityTable<Metadata, 'url'>;
   resource: EntityTable<ResourceAsset, 'url'>;
   'resource-map': EntityTable<ResourceMapAsset, 'url'>;
