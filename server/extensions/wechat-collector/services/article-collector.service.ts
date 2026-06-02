@@ -1,32 +1,31 @@
+import { createHash } from 'crypto';
 import type {
   CollectionAccount,
   CollectionArticle,
   CollectionOptions,
-  IArticleCollectorService
+  IArticleCollectorService,
 } from '~/types/collection.types';
+import { collectorConfig, randomDelay } from '../config';
 import { wechatApiClient } from '../utils/wechat-api-client';
-import { createHash } from 'crypto';
-import { prisma } from './database.service';
 import { contentProcessorService } from './content-processor.service';
+import { prisma } from './database.service';
 
 /**
  * 文章采集服务
  * 负责增量获取文章链接并进行去重，并将新任务推送到处理队列
  */
 export class ArticleCollectorService implements IArticleCollectorService {
-
-  /**
-   * 采集文章链接
-   */
-  async collect(accounts: CollectionAccount[], options?: CollectionOptions, signal?: AbortSignal): Promise<CollectionArticle[]> {
+  async collect(
+    accounts: CollectionAccount[],
+    options?: CollectionOptions,
+    signal?: AbortSignal
+  ): Promise<CollectionArticle[]> {
     console.log(`[ArticleCollector] 开始采集文章，账号数量: ${accounts.length}`);
 
     const allArticles: CollectionArticle[] = [];
-    // 如果 maxArticles 未定义，则为 Infinity，表示采集所有
     const maxArticles = options?.maxArticles ?? Infinity;
 
     for (const account of accounts) {
-      // 检查取消信号
       if (signal?.aborted) {
         console.log('[ArticleCollector] 任务已取消，停止采集');
         throw new Error('任务已取消');
@@ -35,32 +34,29 @@ export class ArticleCollectorService implements IArticleCollectorService {
       try {
         console.log(`[ArticleCollector] 采集公众号: ${account.nickname}`);
 
-        // 增量检查
         const shouldCollect = await this.checkIncremental(account, options?.forceRefresh);
         if (!shouldCollect) {
           console.log(`[ArticleCollector] 跳过采集: ${account.nickname} (增量检查未通过)`);
           continue;
         }
 
-        // API 获取文章
         const articles = await this.fetchArticles(account, maxArticles, signal);
         if (articles.length === 0) continue;
 
-        // 入库 + 去重 + 推送到队列 (流式处理)
         const newArticles = await this.processArticles(articles, account.id);
         allArticles.push(...newArticles);
 
-        // 更新 DB 中的 lastCrawlTime
-        await prisma.account.update({
-          where: { id: account.id },
-          data: { lastCrawlTime: new Date() }
-        });
+        if (newArticles.length > 0) {
+          await prisma.account.update({
+            where: { id: account.id },
+            data: { lastCrawlTime: new Date() },
+          });
+        }
 
-        // 账号间随机延迟
-        await this.delay(2000 + Math.random() * 3000);
-
+        await this.delay(randomDelay(collectorConfig.accountDelayMs));
       } catch (error) {
         if (signal?.aborted || (error instanceof Error && error.message === '任务已取消')) throw error;
+        if (error instanceof Error && error.message.includes('session expired')) throw error;
         console.error(`[ArticleCollector] 采集公众号失败: ${account.nickname}`, error);
       }
     }
@@ -69,51 +65,70 @@ export class ArticleCollectorService implements IArticleCollectorService {
     return allArticles;
   }
 
-  /**
-   * 检查是否需要增量采集
-   */
   async checkIncremental(account: CollectionAccount, forceRefresh?: boolean): Promise<boolean> {
     if (forceRefresh) return true;
-
-    const now = new Date();
-    // 默认间隔 12 小时，可根据账号活跃度调整
-    const interval = 12 * 60 * 60 * 1000;
-    const lastTime = account.lastCrawlTime || new Date(0);
-
-    return now.getTime() - lastTime.getTime() > interval;
+    if (!account.lastCrawlTime) return true;
+    const elapsed = Date.now() - account.lastCrawlTime.getTime();
+    if (elapsed < 12 * 60 * 60 * 1000) {
+      console.log(
+        `[ArticleCollector] 增量检查未通过: ${account.nickname}，距上次采集仅 ${Math.round(elapsed / 60000)} 分钟`
+      );
+      return false;
+    }
+    return true;
   }
 
-  /**
-   * 获取文章列表 API Wrapper
-   */
   private async fetchArticles(account: CollectionAccount, maxArticles: number, signal?: AbortSignal): Promise<any[]> {
     const allArticles: any[] = [];
     let begin = 0;
     let hasMore = true;
+    let shouldStop = false;
+    const lastCrawlTime = account.lastCrawlTime;
 
-    while (hasMore && allArticles.length < maxArticles) {
-      // 检查取消信号
+    while (hasMore && !shouldStop && allArticles.length < maxArticles) {
       if (signal?.aborted) throw new Error('任务已取消');
 
       try {
-        // 使用 WeChatApiClient 获取文章
         const { articles, isCompleted } = await wechatApiClient.getArticleList(account.id, begin);
 
         if (articles && articles.length > 0) {
-          allArticles.push(...articles);
+          // 批量查询本页所有文章的存在状态
+          const pageHashes = articles.map((a: any) => this.generateUrlHash(a.link));
+          const existingMap = await this.batchGetExisting(pageHashes);
+
+          for (const article of articles) {
+            const publishTime = this.toPublishDate(article.create_time);
+            const urlHash = this.generateUrlHash(article.link);
+            const existing = existingMap.get(urlHash);
+            const hitTimeBoundary = !!lastCrawlTime && publishTime <= lastCrawlTime;
+
+            if (existing?.status === 'DONE' || hitTimeBoundary) {
+              shouldStop = true;
+              break;
+            }
+
+            allArticles.push(article);
+
+            if (allArticles.length >= maxArticles) {
+              shouldStop = true;
+              break;
+            }
+          }
           begin += articles.length;
-          console.log(`[ArticleCollector] ${account.nickname} 分页: ${Math.ceil(begin / 10)}, 总数: ${allArticles.length}`);
+          console.log(
+            `[ArticleCollector] ${account.nickname} 分页: ${Math.ceil(begin / 10)}, 总数: ${allArticles.length}`
+          );
         } else {
           hasMore = false;
         }
 
         if (isCompleted || allArticles.length >= maxArticles) hasMore = false;
 
-        // 分页间随机延迟
-        await this.delay(1500 + Math.random() * 1500);
-
+        // 分页间随机延迟（防限流第二层）
+        await this.delay(randomDelay(collectorConfig.pageDelayMs));
       } catch (error) {
         if (signal?.aborted || (error instanceof Error && error.message === '任务已取消')) throw error;
+        if (error instanceof Error && error.message.includes('session expired')) throw error;
         console.error(`[ArticleCollector] fetchArticles error:`, error);
         hasMore = false;
       }
@@ -121,36 +136,52 @@ export class ArticleCollectorService implements IArticleCollectorService {
     return allArticles.slice(0, maxArticles);
   }
 
-  /**
-   * 处理文章: 去重 -> 入库 -> 推送队列
-   */
   private async processArticles(articles: any[], accountId: string): Promise<CollectionArticle[]> {
     const newCollectionArticles: CollectionArticle[] = [];
+
+    // 批量查询所有文章的存在状态
+    const hashes = articles.map(a => this.generateUrlHash(a.link));
+    const existingMap = await this.batchGetExisting(hashes);
 
     for (const article of articles) {
       try {
         const urlHash = this.generateUrlHash(article.link);
+        const existing = existingMap.get(urlHash);
 
-        // 使用 upsert 替代 findUnique + create
-        // 如果已存在，则不进行任何操作 (update 空对象)
-        // 如果不存在，则创建
+        if (existing?.status === 'FAILED' && existing.retryCount < collectorConfig.maxRetries) {
+          await prisma.article.update({
+            where: { id: urlHash },
+            data: {
+              status: 'PENDING',
+              lastError: null,
+              failedAt: null,
+            },
+          });
+        }
+
+        if (existing && existing.status !== 'FAILED') {
+          continue;
+        }
+
         const savedArticle = await prisma.article.upsert({
           where: { id: urlHash },
-          update: {}, // 已存在不更新，保持原有状态
+          update: {
+            status: 'PENDING',
+            lastError: null,
+            failedAt: null,
+          },
           create: {
             id: urlHash,
             url: article.link,
             title: article.title || '无标题',
+            digest: article.digest || null,
             accountId,
-            publishTime: BigInt(article.create_time || 0),
-            status: 0, // Pending
-          }
+            publishTime: this.toPublishTimestamp(article.create_time),
+            status: 'PENDING',
+          },
         });
 
-        // 只有当文章是新创建的（或者状态为 Pending）才加入队列
-        // 这里简单判断：如果 createTime 刚刚生成，说明是新的
-        // 或者我们可以检查 savedArticle.status === 0
-        if (savedArticle.status === 0) {
+        if (savedArticle.status === 'PENDING') {
           const collectionArticle: CollectionArticle = {
             id: savedArticle.id,
             accountId,
@@ -158,15 +189,12 @@ export class ArticleCollectorService implements IArticleCollectorService {
             urlHash: savedArticle.id,
             title: savedArticle.title,
             status: 'pending',
-            createdAt: savedArticle.createdAt
+            createdAt: savedArticle.createdAt,
           };
 
-          // 避免重复加入队列（如果已经是 Pending 但未处理）
-          // 实际生产中可能需要 Redis Set 去重，这里简化处理
           newCollectionArticles.push(collectionArticle);
           await contentProcessorService.addTask(collectionArticle);
         }
-
       } catch (error) {
         console.error(`[ArticleCollector] processArticles error:`, error);
       }
@@ -175,8 +203,32 @@ export class ArticleCollectorService implements IArticleCollectorService {
     return newCollectionArticles;
   }
 
+  /**
+   * 批量查询文章存在状态，返回 Map<urlHash, { status, retryCount }>
+   */
+  private async batchGetExisting(urlHashes: string[]): Promise<Map<string, { status: string; retryCount: number }>> {
+    if (urlHashes.length === 0) return new Map();
+    const rows = await prisma.article.findMany({
+      where: { id: { in: urlHashes } },
+      select: { id: true, status: true, retryCount: true },
+    });
+    const map = new Map<string, { status: string; retryCount: number }>();
+    for (const row of rows) {
+      map.set(row.id, { status: row.status, retryCount: row.retryCount });
+    }
+    return map;
+  }
+
   private generateUrlHash(url: string): string {
     return createHash('sha256').update(url).digest('hex');
+  }
+
+  private toPublishTimestamp(timestamp: number | undefined): bigint {
+    return BigInt(timestamp || Math.floor(Date.now() / 1000));
+  }
+
+  private toPublishDate(timestamp: number | undefined): Date {
+    return new Date((timestamp || Math.floor(Date.now() / 1000)) * 1000);
   }
 
   private delay(ms: number): Promise<void> {

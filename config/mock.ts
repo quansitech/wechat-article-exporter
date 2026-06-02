@@ -15,71 +15,70 @@ export interface MockConfig {
 
 // Mock配置
 export const mockConfig: MockConfig = {
-  // enabled: process.env.MOCK_MODE === 'true',
-  enabled: true,
+  enabled: process.env.MOCK_MODE === 'true',
   apiPrefix: '/api/subject-collection/mock',
   data: {
     accounts: [
       {
-        fakeid: "mock_biz_001",
-        nickname: "测试公众号1",
-        round_head_img: "https://example.com/avatar1.jpg",
+        fakeid: 'mock_biz_001',
+        nickname: '测试公众号1',
+        round_head_img: 'https://example.com/avatar1.jpg',
         service_type: 1,
-        signature: "这是一个测试公众号的描述",
-        alias: "test_account_1"
+        signature: '这是一个测试公众号的描述',
+        alias: 'test_account_1',
       },
       {
-        fakeid: "mock_biz_002",
-        nickname: "测试公众号2",
-        round_head_img: "https://example.com/avatar2.jpg",
+        fakeid: 'mock_biz_002',
+        nickname: '测试公众号2',
+        round_head_img: 'https://example.com/avatar2.jpg',
         service_type: 1,
-        signature: "这是另一个测试公众号的描述",
-        alias: "test_account_2"
-      }
+        signature: '这是另一个测试公众号的描述',
+        alias: 'test_account_2',
+      },
     ],
     articles: [
       {
-        aid: "mock_article_001",
-        title: "测试文章标题1",
-        link: "https://mp.weixin.qq.com/s/mock1",
+        aid: 'mock_article_001',
+        title: '测试文章标题1',
+        link: 'https://mp.weixin.qq.com/s/mock1',
         create_time: 1700000000,
         update_time: 1700000000,
-        author_name: "测试作者",
-        digest: "这是第一篇文章的摘要内容，用于测试目的。",
+        author_name: '测试作者',
+        digest: '这是第一篇文章的摘要内容，用于测试目的。',
         copyright_stat: 1,
         copyright_type: 1,
-        cover: "https://example.com/cover1.jpg",
+        cover: 'https://example.com/cover1.jpg',
         item_show_type: 1,
-        appmsg_album_infos: []
+        appmsg_album_infos: [],
       },
       {
-        aid: "mock_article_002",
-        title: "测试文章标题2",
-        link: "https://mp.weixin.qq.com/s/mock2",
+        aid: 'mock_article_002',
+        title: '测试文章标题2',
+        link: 'https://mp.weixin.qq.com/s/mock2',
         create_time: 1700086400,
         update_time: 1700086400,
-        author_name: "测试作者",
-        digest: "这是第二篇文章的摘要内容，包含更多详细信息。",
+        author_name: '测试作者',
+        digest: '这是第二篇文章的摘要内容，包含更多详细信息。',
         copyright_stat: 0,
         copyright_type: 0,
-        cover: "https://example.com/cover2.jpg",
+        cover: 'https://example.com/cover2.jpg',
         item_show_type: 1,
-        appmsg_album_infos: []
+        appmsg_album_infos: [],
       },
       {
-        aid: "mock_article_003",
-        title: "测试文章标题3",
-        link: "https://mp.weixin.qq.com/s/mock3",
+        aid: 'mock_article_003',
+        title: '测试文章标题3',
+        link: 'https://mp.weixin.qq.com/s/mock3',
         create_time: 1700172800,
         update_time: 1700172800,
-        author_name: "测试作者",
-        digest: "这是第三篇文章的摘要，用于展示不同的内容类型。",
+        author_name: '测试作者',
+        digest: '这是第三篇文章的摘要，用于展示不同的内容类型。',
         copyright_stat: 1,
         copyright_type: 1,
-        cover: "https://example.com/cover3.jpg",
+        cover: 'https://example.com/cover3.jpg',
         item_show_type: 2,
-        appmsg_album_infos: []
-      }
+        appmsg_album_infos: [],
+      },
     ],
     authorinfo: {
       base_resp: {
@@ -89,8 +88,8 @@ export const mockConfig: MockConfig = {
       identity_name: '专心保险经纪有限公司',
       is_verify: 2,
       original_article_count: 3585,
-    }
-  }
+    },
+  },
 };
 
 // 获取Mock API URL
@@ -115,23 +114,40 @@ export const mockUtils = {
     return mockConfig.data.accounts;
   },
 
-  // 获取Mock文章数据
-  getArticles() {
-    const len = 11;
-    const articles = [...mockConfig.data.articles];
-    for (let i = 2; i < len; i++) {
+  // 获取Mock文章数据（按账号区分）
+  getArticles(fakeid?: string) {
+    const base = [...mockConfig.data.articles];
+
+    // 账号1: 2 篇文章
+    const account1Articles = base.slice(0, 2).map((a, i) => ({
+      ...a,
+      aid: `acc1_article_${String(i + 1).padStart(3, '0')}`,
+      title: `公众号1-测试文章${i + 1}`,
+      link: `https://mp.weixin.qq.com/s/acc1_${i + 1}`,
+      create_time: 1700000000 + i * 86400,
+      update_time: 1700000000 + i * 86400,
+    }));
+
+    // 账号2: 11 篇文章
+    const account2Articles = [];
+    for (let i = 0; i < 11; i++) {
       const key = i + 1;
-      articles.push({
-        ...mockConfig.data.articles[0],
-        aid: `mock_article_${String(key).padStart(3, '0')}`,
-        title: `测试文章标题${key}`,
-        link: `https://mp.weixin.qq.com/s/mock${key}`,
+      account2Articles.push({
+        ...base[i % base.length],
+        aid: `acc2_article_${String(key).padStart(3, '0')}`,
+        title: `公众号2-测试文章${key}`,
+        link: `https://mp.weixin.qq.com/s/acc2_${key}`,
         create_time: 1700000000 + i * 86400,
         update_time: 1700000000 + i * 86400,
-        digest: `这是第${key}篇文章的摘要内容，用于测试目的。`
+        digest: `公众号2第${key}篇文章摘要。`,
       });
     }
-    return articles;
+
+    if (fakeid === 'mock_biz_001') return account1Articles;
+    if (fakeid === 'mock_biz_002') return account2Articles;
+
+    // 无 fakeid 时返回全部（向后兼容）
+    return [...account1Articles, ...account2Articles];
   },
 
   // 获取Mock作者信息
@@ -142,11 +158,11 @@ export const mockUtils = {
         base_resp: { ret: 0, err_msg: 'ok' },
         nickname: account.nickname,
         fakeid: account.fakeid,
-        signature: account.signature
+        signature: account.signature,
       };
     }
     return {
-      base_resp: { ret: -1, err_msg: '公众号不存在' }
+      base_resp: { ret: -1, err_msg: '公众号不存在' },
     };
   },
 
@@ -288,5 +304,5 @@ function helloWorld() {
 
 ---
   本文为Mock数据，仅用于开发和测试目的`;
-  }
+  },
 };

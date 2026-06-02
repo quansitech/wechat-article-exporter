@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import { request } from '#shared/utils/request';
-import { getCookieFromResponse, getCookiesFromRequest, exportAuthInfo } from '~/server/utils/CookieStore';
-import { autoSaveAuthInfo } from '~/server/utils/auth-file';
+import { authProvider } from '~/server/extensions/wechat-collector/services/auth-provider.service';
+import { exportAuthInfo, getCookieFromResponse, getCookiesFromRequest } from '~/server/utils/CookieStore';
 import { proxyMpRequest } from '~/server/utils/proxy-request';
 
 export default defineEventHandler(async event => {
@@ -58,10 +58,8 @@ export default defineEventHandler(async event => {
 
     const authInfo = await exportAuthInfo(event);
     if (authInfo.token && authInfo.cookies) {
-      const saved = autoSaveAuthInfo(authInfo.token, authInfo.cookies);
-      if (saved) {
-        console.log('认证信息已保存到文件:', authInfo.token ? 'token已保存' : '', authInfo.cookies ? 'cookies已保存' : '');
-      }
+      await authProvider.update(authInfo.token, authInfo.cookies);
+      console.log('认证信息已同步到 collector');
     }
   } catch (error) {
     console.warn('保存认证信息到文件失败:', error);

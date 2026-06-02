@@ -1,8 +1,8 @@
 import type {
-  CollectionTask,
   CollectionOptions,
+  CollectionStatusResponse,
+  CollectionTask,
   ITaskManagerService,
-  CollectionStatusResponse
 } from '~/types/collection.types';
 import { prisma } from './database.service';
 
@@ -12,7 +12,6 @@ import { prisma } from './database.service';
  * 使用数据库存储，支持持久化
  */
 export class TaskManagerService implements ITaskManagerService {
-
   /**
    * 创建新的采集任务
    */
@@ -25,7 +24,7 @@ export class TaskManagerService implements ITaskManagerService {
       accountsDiscovered: 0,
       articlesCollected: 0,
       articlesProcessed: 0,
-      message: '任务初始化...'
+      message: '任务初始化...',
     };
 
     await prisma.collectionTask.create({
@@ -35,8 +34,8 @@ export class TaskManagerService implements ITaskManagerService {
         status: 'running',
         progress: JSON.stringify(initialProgress),
         createdAt: new Date(),
-        updatedAt: new Date()
-      }
+        updatedAt: new Date(),
+      },
     });
 
     console.log(`[TaskManager] 创建任务: ${taskId}, 主体: ${subjectName}`);
@@ -48,7 +47,7 @@ export class TaskManagerService implements ITaskManagerService {
    */
   async getTask(taskId: string): Promise<CollectionTask | null> {
     const task = await prisma.collectionTask.findUnique({
-      where: { id: taskId }
+      where: { id: taskId },
     });
 
     if (!task) return null;
@@ -67,7 +66,7 @@ export class TaskManagerService implements ITaskManagerService {
 
     const tasks = await prisma.collectionTask.findMany({
       where,
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     });
 
     return tasks.map(t => this.mapPrismaTaskToCollectionTask(t));
@@ -88,8 +87,8 @@ export class TaskManagerService implements ITaskManagerService {
         where: { id: taskId },
         data: {
           progress: JSON.stringify(newProgress),
-          updatedAt: new Date()
-        }
+          updatedAt: new Date(),
+        },
       });
 
       console.log(`[TaskManager] 更新任务进度: ${taskId}, 步骤: ${newProgress.step}, 进度: ${newProgress.percentage}`);
@@ -108,8 +107,8 @@ export class TaskManagerService implements ITaskManagerService {
         data: {
           status,
           error: error || null,
-          updatedAt: new Date()
-        }
+          updatedAt: new Date(),
+        },
       });
 
       console.log(`[TaskManager] 更新任务状态: ${taskId}, 状态: ${status}${error ? `, 错误: ${error}` : ''}`);
@@ -135,7 +134,7 @@ export class TaskManagerService implements ITaskManagerService {
       totalTasks: tasks.length,
       runningTasks: tasks.filter(t => t.status === 'running').length,
       completedTasks: tasks.filter(t => t.status === 'completed').length,
-      failedTasks: tasks.filter(t => t.status === 'failed').length
+      failedTasks: tasks.filter(t => t.status === 'failed').length,
     };
 
     return { tasks, summary };
@@ -152,8 +151,8 @@ export class TaskManagerService implements ITaskManagerService {
       const result = await prisma.collectionTask.deleteMany({
         where: {
           updatedAt: { lt: twentyFourHoursAgo },
-          status: { in: ['completed', 'failed'] } // 只清理非运行状态的任务
-        }
+          status: { in: ['completed', 'failed'] }, // 只清理非运行状态的任务
+        },
       });
 
       if (result.count > 0) {
@@ -182,15 +181,10 @@ export class TaskManagerService implements ITaskManagerService {
       progress: JSON.parse(prismaTask.progress),
       error: prismaTask.error || undefined,
       createdAt: prismaTask.createdAt,
-      updatedAt: prismaTask.updatedAt
+      updatedAt: prismaTask.updatedAt,
     };
   }
 }
 
 // 创建单例实例
 export const taskManagerService = new TaskManagerService();
-
-// 定期清理过期任务
-setInterval(() => {
-  taskManagerService.cleanupExpiredTasks();
-}, 60 * 60 * 1000); // 每小时清理一次

@@ -32,7 +32,7 @@ export interface CollectionAccount {
   fakeid: string;           // 关联现有账号的fakeid，仅用于API调用
   nickname: string;
   verified: boolean;
-  lastCrawlTime: Date;      // 最后采集时间，用于增量检查
+  lastCrawlTime: Date | null;      // 最后采集时间，用于增量检查
   createdAt: Date;
 }
 
@@ -130,9 +130,14 @@ export interface IArticleCollectorService {
 }
 
 export interface IContentProcessorService {
+  initialize(): Promise<void>;
   process(articles: CollectionArticle[], options?: CollectionOptions): Promise<ArticleProcessResult[]>;
+  addTask(article: CollectionArticle): Promise<void>;
+  waitForIdle(): Promise<void>;
   downloadAndConvert(url: string): Promise<string>;
-  saveToFile(content: string, metadata: { title: string; author: string; date: Date }): Promise<string>;
+  restorePendingTasks(): Promise<void>;
+  getQueueStats(): { size: number; pending: number; concurrency: number };
+  setConcurrency(concurrency: number): void;
 }
 
 export interface ITaskManagerService {

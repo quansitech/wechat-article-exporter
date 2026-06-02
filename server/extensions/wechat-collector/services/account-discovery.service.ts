@@ -1,7 +1,4 @@
-import type {
-  CollectionAccount,
-  IAccountDiscoveryService
-} from '~/types/collection.types';
+import type { CollectionAccount, IAccountDiscoveryService } from '~/types/collection.types';
 import { wechatApiClient } from '../utils/wechat-api-client';
 import { prisma } from './database.service';
 
@@ -10,7 +7,6 @@ import { prisma } from './database.service';
  * 负责搜索和验证公众号账号
  */
 export class AccountDiscoveryService implements IAccountDiscoveryService {
-
   /**
    * 发现公众号账号
    * 优先查库，库中没有才调用API
@@ -23,8 +19,8 @@ export class AccountDiscoveryService implements IAccountDiscoveryService {
       const cachedAccounts = await prisma.account.findMany({
         where: {
           entityName: subjectName,
-          isVerified: true
-        }
+          isVerified: true,
+        },
       });
 
       if (cachedAccounts.length > 0) {
@@ -35,14 +31,14 @@ export class AccountDiscoveryService implements IAccountDiscoveryService {
           fakeid: acc.id,
           nickname: acc.name,
           verified: acc.isVerified,
-          lastCrawlTime: acc.lastCrawlTime || new Date(0),
-          createdAt: acc.createdAt
+          lastCrawlTime: acc.lastCrawlTime,
+          createdAt: acc.createdAt,
         }));
       }
 
       // 2. 库中无，调用 API 搜索
       console.log(`[AccountDiscovery] 缓存未命中，调用API搜索...`);
-      const { accounts, isCompleted } = await wechatApiClient.searchBiz(subjectName, 0);
+      const { accounts } = await wechatApiClient.searchBiz(subjectName, 0);
 
       if (!accounts || accounts.length === 0) {
         console.log(`[AccountDiscovery] 未找到与"${subjectName}"相关的公众号`);
@@ -67,15 +63,15 @@ export class AccountDiscoveryService implements IAccountDiscoveryService {
               name: account.nickname,
               entityName: subjectName,
               isVerified: true,
-              updatedAt: new Date()
+              updatedAt: new Date(),
             },
             create: {
               id: account.fakeid,
               name: account.nickname,
               entityName: subjectName,
               isVerified: true,
-              lastCrawlTime: null // 新账号默认未采集
-            }
+              lastCrawlTime: null,
+            },
           });
 
           collectionAccounts.push({
@@ -84,8 +80,8 @@ export class AccountDiscoveryService implements IAccountDiscoveryService {
             fakeid: savedAccount.id,
             nickname: savedAccount.name,
             verified: savedAccount.isVerified,
-            lastCrawlTime: savedAccount.lastCrawlTime || new Date(0),
-            createdAt: savedAccount.createdAt
+            lastCrawlTime: savedAccount.lastCrawlTime,
+            createdAt: savedAccount.createdAt,
           });
 
           console.log(`[AccountDiscovery] 验证通过并入库: ${account.nickname} (${account.fakeid})`);
@@ -95,8 +91,10 @@ export class AccountDiscoveryService implements IAccountDiscoveryService {
       }
 
       return collectionAccounts;
-
     } catch (error) {
+      if (error instanceof Error && error.message.includes('session expired')) {
+        throw error;
+      }
       console.error(`[AccountDiscovery] 搜索公众号失败:`, error);
       throw new Error(`搜索公众号失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
@@ -112,7 +110,8 @@ export class AccountDiscoveryService implements IAccountDiscoveryService {
 
       if (response.base_resp.ret === 0) {
         const identityName = response.identity_name || '';
-        const isMatch = identityName.toLowerCase().includes(subjectName.toLowerCase()) ||
+        const isMatch =
+          identityName.toLowerCase().includes(subjectName.toLowerCase()) ||
           accountInfo.nickname.toLowerCase().includes(subjectName.toLowerCase());
 
         console.log(`[AccountDiscovery] 验证结果: ${isMatch}, 主体: ${identityName}, 账号: ${accountInfo.nickname}`);
@@ -120,9 +119,15 @@ export class AccountDiscoveryService implements IAccountDiscoveryService {
       }
 
       console.warn(`[AccountDiscovery] 验证接口返回错误: ${response.base_resp.ret} ${response.base_resp.err_msg}`);
-      return false;
+      if (response.base_resp.ret === 200003) {
+        throw new Error('session expired');
+      }
 
+      return false;
     } catch (error) {
+      if (error instanceof Error && error.message.includes('session expired')) {
+        throw error;
+      }
       console.warn(`[AccountDiscovery] 验证公众号失败:`, error);
       return false;
     }
@@ -140,8 +145,8 @@ export class AccountDiscoveryService implements IAccountDiscoveryService {
       fakeid: acc.id,
       nickname: acc.name,
       verified: acc.isVerified,
-      lastCrawlTime: acc.lastCrawlTime || new Date(0),
-      createdAt: acc.createdAt
+      lastCrawlTime: acc.lastCrawlTime,
+      createdAt: acc.createdAt,
     };
   }
 
@@ -152,7 +157,7 @@ export class AccountDiscoveryService implements IAccountDiscoveryService {
     try {
       await prisma.account.update({
         where: { id: accountId },
-        data: { lastCrawlTime: crawlTime }
+        data: { lastCrawlTime: crawlTime },
       });
       console.log(`[AccountDiscovery] 更新账号采集时间: ${accountId}, 时间: ${crawlTime}`);
     } catch (error) {

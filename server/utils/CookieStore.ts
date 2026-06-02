@@ -1,6 +1,6 @@
 import { H3Event, parseCookies } from 'h3';
-import { CookieKVValue, getMpCookie, setMpCookie, type CookieEntity } from '~/server/kv/cookie';
-import { getAuthFromFile, autoSaveAuthInfo } from './auth-file';
+import { type CookieEntity, CookieKVValue, getMpCookie, setMpCookie } from '~/server/kv/cookie';
+import { autoSaveAuthInfo, getAuthFromFile } from './auth-file';
 
 // 钩子数组
 const tokenHooks: Array<(event: H3Event) => Promise<string | null>> = [];
@@ -27,8 +27,6 @@ export function clearAuthHooks(): void {
   tokenHooks.length = 0;
   cookieHooks.length = 0;
 }
-
-
 
 // 公众号所有的 set-cookie 解析结果
 export class AccountCookie {
@@ -351,7 +349,7 @@ export function getCookieFromResponse(name: string, response: Response): string 
 
 /**
  * 导出当前认证信息用于环境变量配置
- * 
+ *
  * @description 从当前请求中提取完整的认证信息，包括token和cookies
  * @param event
  */
@@ -371,7 +369,7 @@ export async function exportAuthInfo(event: H3Event): Promise<{
       token: null,
       cookies: null,
       authKey: null,
-      envConfig: {}
+      envConfig: {},
     };
   }
 
@@ -403,13 +401,13 @@ export async function exportAuthInfo(event: H3Event): Promise<{
     token,
     cookies,
     authKey,
-    envConfig
+    envConfig,
   };
 }
 
 /**
  * 检查认证状态
- * 
+ *
  * @description 验证当前认证信息的有效性
  * @param event
  */
@@ -426,6 +424,6 @@ export async function checkAuthStatus(event: H3Event): Promise<{
     isAuthenticated: !!(token && cookies),
     hasToken: !!token,
     hasCookies: !!cookies,
-    authKey: getRequestHeader(event, 'X-Auth-Key') || parseCookies(event)['auth-key']
+    authKey: getRequestHeader(event, 'X-Auth-Key') || parseCookies(event)['auth-key'],
   };
 }
