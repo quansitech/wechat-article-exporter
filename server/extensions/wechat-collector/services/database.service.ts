@@ -14,10 +14,16 @@ export const prisma = new PrismaClient({
     : undefined,
 });
 
-console.log('[Database] Initialized successfully');
+export function isSqlite(): boolean {
+  return (process.env.DATABASE_URL ?? '').startsWith('file:');
+}
+
+console.log(`[Database] Using ${isSqlite() ? 'SQLite' : 'PostgreSQL'} storage`);
 
 export async function recoverCollectorState(): Promise<void> {
-  await ensureCollectorSchema();
+  if (isSqlite()) {
+    await ensureCollectorSchema();
+  }
 
   await prisma.crawlRun.updateMany({
     where: { status: 'RUNNING' },
@@ -143,4 +149,20 @@ async function ensureCollectorSchema(): Promise<void> {
       "updated_at" DATETIME NOT NULL
     )
   `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "crawl_run_item" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "crawl_run_id" TEXT NOT NULL,
+      "article_id" TEXT NOT NULL,
+      "status" TEXT NOT NULL DEFAULT 'DISCOVERED',
+      "error" TEXT,
+      "started_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "completed_at" DATETIME,
+      CONSTRAINT "crawl_run_item_crawl_run_id_fkey" FOREIGN KEY ("crawl_run_id") REFERENCES "crawl_run" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+      CONSTRAINT "crawl_run_item_crawl_run_id_article_id_key" UNIQUE ("crawl_run_id", "article_id")
+    )
+  `);
+  await prisma.$executeRawUnsafe(
+    'CREATE INDEX IF NOT EXISTS "crawl_run_item_article_id_idx" ON "crawl_run_item"("article_id")'
+  );
 }

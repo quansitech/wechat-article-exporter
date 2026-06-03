@@ -114,6 +114,25 @@ model CrawlRun {
   startedAt       DateTime      @default(now()) @map("started_at")
   completedAt     DateTime?     @map("completed_at")
 
+  items           CrawlRunItem[]
+
   @@index([targetId, startedAt])
   @@map("crawl_run")
+}
+
+// 7. 爬取运行明细表
+model CrawlRunItem {
+  id          String   @id @default(uuid())
+  crawlRunId  String   @map("crawl_run_id")
+  articleId   String   @map("article_id")
+  status      String   @default("DISCOVERED") // DISCOVERED, DOWNLOADED, PROCESSED, FAILED, SKIPPED
+  error       String?
+  startedAt   DateTime @default(now()) @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  crawlRun    CrawlRun @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
+
+  @@unique([crawlRunId, articleId])
+  @@index([articleId])
+  @@map("crawl_run_item")
 }

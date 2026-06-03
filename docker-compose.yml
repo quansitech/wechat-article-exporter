@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.collector
+    container_name: wechat-collector-app
+    restart: always
+    ports:
+      - "10001:3000"
+    environment:
+      # 请将 host.docker.internal 替换为您宿主机的 IP，或者如果数据库在公网，直接填写公网 IP
+      # 格式: postgresql://user:password@host:port/database
+      - DATABASE_URL=postgresql://postgres:password@host.docker.internal:5432/wechat_collector
+      - NUXT_app_cdnUrl=
+    volumes:
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+    # 如果您的数据库在宿主机上，Linux 下可能需要 host 模式或使用 host.docker.internal
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+
+networks:
+  default:
+    driver: bridge

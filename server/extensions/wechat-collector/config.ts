@@ -53,6 +53,12 @@ export const collectorConfig = {
 
   /** 已完成任务保留时间 (ms) */
   taskTtlMs: envInt('COLLECTOR_TASK_TTL_MS', 24 * 60 * 60 * 1000),
+
+  /** 认证失败指数退避基础延迟 (ms) */
+  authBackoffBaseMs: envInt('COLLECTOR_AUTH_BACKOFF_BASE_MS', 60_000),
+
+  /** 认证失败指数退避最大延迟 (ms) */
+  authBackoffMaxMs: envInt('COLLECTOR_AUTH_BACKOFF_MAX_MS', 3_600_000),
 } as const;
 
 /** 在给定延迟范围内产生随机值 */

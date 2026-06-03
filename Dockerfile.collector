@@ -1,0 +1,47 @@
+# Build Stage
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+# Enable corepack for yarn
+RUN corepack enable
+
+# Copy package files
+COPY package.json yarn.lock ./
+
+# Install dependencies
+RUN yarn install --frozen-lockfile
+
+# Copy source code
+COPY . .
+
+# Generate Prisma Client
+RUN npx prisma generate --schema=server/extensions/wechat-collector/prisma/schema.prisma
+
+# Build Nuxt application
+RUN npm run build
+
+# Production Stage
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Copy built application
+COPY --from=builder /app/.output ./.output
+# Copy Prisma schema for migrations
+COPY --from=builder /app/server/extensions/wechat-collector/prisma ./prisma
+
+# Install production dependencies
+COPY package.json yarn.lock ./
+RUN corepack enable && yarn install --production --frozen-lockfile
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV NUXT_HOST=0.0.0.0
+ENV NUXT_PORT=3000
+
+# Expose port
+EXPOSE 3000
+
+# Start application
+CMD ["node", ".output/server/index.mjs"]

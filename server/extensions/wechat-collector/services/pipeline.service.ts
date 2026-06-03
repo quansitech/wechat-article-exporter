@@ -33,9 +33,7 @@ export class PipelineService {
 
     this.executeRun(run.id, target.id, options, controller.signal).catch(error => {
       console.error(`[Pipeline] 采集任务失败: ${run.id}`, error);
-      this.failRun(run.id, error instanceof Error ? error.message : '未知错误').catch(updateError => {
-        console.error(`[Pipeline] 更新失败状态异常: ${run.id}`, updateError);
-      });
+      // failRun is called inside executeRun's catch block, no need to call again
     });
 
     return run.id;
@@ -142,14 +140,58 @@ export class PipelineService {
       if (signal?.aborted) throw new Error('任务被手动取消');
 
       const articles = await articleCollectorService.collect(accounts, options, signal);
+
+      // Record CrawlRunItem for each discovered article
+      if (articles.length > 0) {
+        await prisma.crawlRunItem.createMany({
+          data: articles.map(article => ({
+            id: randomUUID(),
+            crawlRunId: runId,
+            articleId: article.id,
+            status: 'DISCOVERED',
+          })),
+        });
+      }
+
       await contentProcessorService.waitForIdle();
 
-      const articlesFailed = await prisma.article.count({
+      // Update CrawlRunItem status based on processing results
+      const failedArticles = await prisma.article.findMany({
         where: {
           id: { in: articles.map(article => article.id) },
           status: 'FAILED',
         },
+        select: { id: true },
       });
+      const articlesFailed = failedArticles.length;
+
+      if (failedArticles.length > 0) {
+        await prisma.crawlRunItem.updateMany({
+          where: {
+            crawlRunId: runId,
+            articleId: { in: failedArticles.map(a => a.id) },
+          },
+          data: {
+            status: 'FAILED',
+            completedAt: new Date(),
+          },
+        });
+      }
+
+      // Remaining DISCOVERED items are successfully processed
+      if (articles.length - articlesFailed > 0) {
+        await prisma.crawlRunItem.updateMany({
+          where: {
+            crawlRunId: runId,
+            status: 'DISCOVERED',
+          },
+          data: {
+            status: 'PROCESSED',
+            completedAt: new Date(),
+          },
+        });
+      }
+
       const completedAt = new Date();
 
       await prisma.crawlRun.update({
@@ -180,6 +222,11 @@ export class PipelineService {
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
       await this.failRun(runId, message);
+      // Mark remaining DISCOVERED CrawlRunItems as FAILED
+      await prisma.crawlRunItem.updateMany({
+        where: { crawlRunId: runId, status: 'DISCOVERED' },
+        data: { status: 'FAILED', completedAt: new Date(), error: message },
+      }).catch(() => {});
       await webhookService.notify(target.webhookUrl, {
         event: 'crawl.failed',
         targetId: target.id,
